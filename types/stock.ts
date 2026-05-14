@@ -45,4 +45,28 @@ export type StockScored = StockRaw & {
   oneLineJudgment: string;
   score: ScoreBreakdown;
   isForcedExcluded: boolean;
+  whyGood: string[];
+  whyRisky: string[];
 };
+
+export type MarketFilter = 'ALL' | Market;
+export type GradeFilter = 'ALL' | Grade;
+
+export type FilterState = {
+  market: MarketFilter;
+  grade: GradeFilter;
+  onlySA: boolean;
+  excludeRisk: boolean;
+  onlyLowPer: boolean;
+  onlyProfitable: boolean;
+  onlyPositiveCashFlow: boolean;
+};
+
+export type SortKey =
+  | 'totalScore'
+  | 'growth'
+  | 'profitability'
+  | 'cashFlow'
+  | 'stability'
+  | 'valuation'
+  | 'momentum';

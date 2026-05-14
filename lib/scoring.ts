@@ -1,5 +1,6 @@
 import type { ActionSuggestion, Grade, ScoreBreakdown, StockRaw, StockScored } from '@/types/stock';
 import { getRiskPenalty, isForcedExcluded } from '@/lib/riskFlags';
+import { buildWhyGood, buildWhyRisky } from '@/lib/reasons';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.min(max, Math.max(min, Math.round(value)));
@@ -112,6 +113,8 @@ export function scoreStock(stock: StockRaw): StockScored {
     action: getAction(grade),
     oneLineJudgment: getJudgment(stock, grade),
     isForcedExcluded: forcedExcluded,
+    whyGood: buildWhyGood(stock, score, totalScore),
+    whyRisky: buildWhyRisky(stock, forcedExcluded),
   };
 }
 
