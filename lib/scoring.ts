@@ -7,8 +7,22 @@ function clamp(value: number, min = 0, max = 100): number {
 }
 
 function scoreGrowth(stock: StockRaw): number {
-  const revenueScore = clamp(stock.revenueGrowthRate * 1.2, 0, 12);
-  const profitScore = clamp(stock.operatingProfitGrowthRate * 0.9, 0, 13);
+  const rev = stock.revenueGrowthRate;
+  const op = stock.operatingProfitGrowthRate;
+
+  let revenueScore: number;
+  if (rev >= 10) revenueScore = 12;
+  else if (rev >= 0) revenueScore = Math.round(rev * 1.2);
+  else if (rev >= -5) revenueScore = 3;
+  else revenueScore = 0;
+
+  let profitScore: number;
+  if (op >= 15) profitScore = 13;
+  else if (op >= 0) profitScore = Math.round(op * 0.87);
+  else if (op >= -15) profitScore = 6;
+  else if (op >= -30) profitScore = 3;
+  else profitScore = 0;
+
   return revenueScore + profitScore;
 }
 
@@ -33,8 +47,8 @@ function scoreCashFlow(stock: StockRaw): number {
 function scoreStability(stock: StockRaw): number {
   if (stock.debtRatio <= 50) return 15;
   if (stock.debtRatio <= 100) return 13;
-  if (stock.debtRatio <= 150) return 10;
-  if (stock.debtRatio <= 200) return 6;
+  if (stock.debtRatio <= 200) return 10;
+  if (stock.debtRatio <= 300) return 6;
   return 2;
 }
 
