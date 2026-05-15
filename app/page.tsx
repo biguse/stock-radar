@@ -9,6 +9,7 @@ import { applyFilters, applySort, DEFAULT_FILTER } from '@/lib/filters';
 import { Filters } from '@/components/filters';
 import { SummaryCards } from '@/components/summary-cards';
 import { StockCard } from '@/components/stock-card';
+import { MarketPulseWidget, useMarketPulse } from '@/components/market-pulse';
 
 const MEMO_PREFIX = 'stock-radar:memo:';
 
@@ -18,6 +19,7 @@ export default function Page() {
   const [filter, setFilter] = useState<FilterState>(DEFAULT_FILTER);
   const [sortKey, setSortKey] = useState<SortKey>('totalScore');
   const [memoCodes, setMemoCodes] = useState<Set<string>>(new Set());
+  const { data: pulse } = useMarketPulse();
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -65,6 +67,10 @@ export default function Page() {
       </header>
 
       <section className="mb-6">
+        <MarketPulseWidget />
+      </section>
+
+      <section className="mb-6">
         <SummaryCards stocks={allScored} />
       </section>
 
@@ -90,7 +96,12 @@ export default function Page() {
           </div>
         ) : (
           visible.map((stock) => (
-            <StockCard key={stock.code} stock={stock} initialHasMemo={memoCodes.has(stock.code)} />
+            <StockCard
+              key={stock.code}
+              stock={stock}
+              initialHasMemo={memoCodes.has(stock.code)}
+              timing={pulse?.watchlistTiming[stock.code]}
+            />
           ))
         )}
       </section>

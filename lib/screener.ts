@@ -26,6 +26,10 @@ const MARKETS: { market: Market; sosok: '0' | '1' }[] = [
   { market: 'KOSDAQ', sosok: '1' },
 ];
 
+const MIN_MARKET_CAP = 1000; // 억원
+const MIN_PER = 1;
+const MAX_ROE = 80;
+
 async function fetchNaver(url: string): Promise<string> {
   const res = await fetch(url, {
     headers: {
@@ -151,6 +155,11 @@ function parseMarketSum(html: string, market: Market): ScreenerStock[] {
     });
   });
 
+  const perRoeValidCount = rows.filter((s) => s.per !== null && s.roe !== null).length;
+  if (rows.length >= 20 && perRoeValidCount / rows.length < 0.3) {
+    throw new Error('Naver market_sum parse suspicious: PER/ROE valid ratio too low');
+  }
+
   return rows;
 }
 
@@ -193,12 +202,12 @@ export async function fetchScreener(topN = 30): Promise<ScreenerResult> {
   const eligible = universe.filter(
     (s) =>
       !s.isPreferred &&
-      s.marketCap >= 1000 &&
+      s.marketCap >= MIN_MARKET_CAP &&
       s.per !== null &&
-      s.per >= 1 &&
+      s.per >= MIN_PER &&
       s.roe !== null &&
       s.roe > 0 &&
-      s.roe <= 80,
+      s.roe <= MAX_ROE,
   );
 
   eligible.forEach((s) => {

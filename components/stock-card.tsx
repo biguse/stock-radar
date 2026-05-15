@@ -2,11 +2,14 @@
 
 import { useState } from 'react';
 import type { ActionSuggestion, Grade, StockScored } from '@/types/stock';
+import type { StockTiming } from '@/lib/market';
 import { MemoBox } from '@/components/memo-box';
+import { TimingBadge } from '@/components/market-pulse';
 
 type Props = {
   stock: StockScored;
   initialHasMemo: boolean;
+  timing?: StockTiming;
 };
 
 const GRADE_STYLE: Record<Grade, string> = {
@@ -25,14 +28,14 @@ const ACTION_STYLE: Record<ActionSuggestion, string> = {
   피함: 'bg-rose-500/10 text-rose-300 border-rose-500/40',
 };
 
-export function StockCard({ stock, initialHasMemo }: Props) {
+export function StockCard({ stock, initialHasMemo, timing }: Props) {
   const [hasMemo, setHasMemo] = useState(initialHasMemo);
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-lg font-semibold text-slate-100">{stock.name}</h3>
             <span className="text-xs text-slate-500">{stock.code}</span>
             {hasMemo ? (
@@ -40,6 +43,7 @@ export function StockCard({ stock, initialHasMemo }: Props) {
                 메모 있음
               </span>
             ) : null}
+            <TimingBadge timing={timing} />
           </div>
           <div className="mt-1 text-xs text-slate-400">
             {stock.market} · {stock.industry}

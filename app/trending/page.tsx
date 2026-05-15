@@ -5,7 +5,9 @@ import Link from 'next/link';
 import rawStocks from '@/data/stocks.sample.json';
 import type { StockRaw, StockScored } from '@/types/stock';
 import type { InvestorFlow, TrendingResult, TrendingStock } from '@/lib/trending';
+import type { StockTiming } from '@/lib/market';
 import { scoreStocks } from '@/lib/scoring';
+import { useMarketPulse } from '@/components/market-pulse';
 
 type ApiResponse = TrendingResult & {
   cached?: boolean;
@@ -25,6 +27,7 @@ export default function TrendingPage() {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { data: pulse } = useMarketPulse();
 
   async function load() {
     setLoading(true);
@@ -117,7 +120,11 @@ export default function TrendingPage() {
 
       {data ? (
         <div className="space-y-6">
-          <RecommendationSection data={data} watchlist={watchlist} />
+          <RecommendationSection
+            data={data}
+            watchlist={watchlist}
+            marketTiming={pulse?.watchlistTiming ?? {}}
+          />
           <PumpRiskPanel stocks={data.pumpRisk} />
           <Panel
             title="거래량 / 거래대금 상위"
@@ -185,58 +192,100 @@ export default function TrendingPage() {
   );
 }
 
-type Candidate = TrendingStock & { inVolume: boolean };
+type SignalSource = 'volume' | 'gainers' | 'losers';
+type MatchedSignal = { stock: TrendingStock; sources: Set<SignalSource> };
+
+function isFollowable(grade: StockScored['grade']): boolean {
+  return grade === 'S' || grade === 'A' || grade === 'B';
+}
 
 function RecommendationSection({
   data,
   watchlist,
+  marketTiming,
 }: {
   data: TrendingResult;
   watchlist: Map<string, StockScored>;
+  marketTiming: Record<string, StockTiming>;
 }) {
-  const volumeCodes = new Set(data.volume.map((s) => s.code));
+  const matched = new Map<string, MatchedSignal>();
 
-  const watchlistSeen = new Map<string, TrendingStock>();
-  [...data.volume, ...data.gainers, ...data.losers].forEach((s) => {
-    const w = watchlist.get(s.code);
-    if (!w) return;
-    if (w.grade !== 'S' && w.grade !== 'A' && w.grade !== 'B') return;
-    if (!watchlistSeen.has(s.code)) watchlistSeen.set(s.code, s);
-  });
-  const candidates: Candidate[] = Array.from(watchlistSeen.values()).map((s) => ({
-    ...s,
-    inVolume: volumeCodes.has(s.code),
-  }));
+  function addSignal(stocks: TrendingStock[], source: SignalSource) {
+    for (const s of stocks) {
+      const w = watchlist.get(s.code);
+      if (!w || !isFollowable(w.grade)) continue;
+      const existing = matched.get(s.code);
+      if (existing) {
+        existing.sources.add(source);
+      } else {
+        matched.set(s.code, { stock: s, sources: new Set([source]) });
+      }
+    }
+  }
 
-  const dipCandidates = candidates
-    .filter((s) => s.changePct <= -2)
+  addSignal(data.volume, 'volume');
+  addSignal(data.gainers, 'gainers');
+  addSignal(data.losers, 'losers');
+
+  const all = Array.from(matched.values());
+
+  const dipCandidates = all
+    .filter((m) => m.sources.has('volume') && m.stock.changePct <= -2)
     .sort((a, b) => {
-      if (a.inVolume !== b.inVolume) return a.inVolume ? -1 : 1;
-      return a.changePct - b.changePct;
+      const ta = a.stock.tradingValue ?? 0;
+      const tb = b.stock.tradingValue ?? 0;
+      if (tb !== ta) return tb - ta;
+      return a.stock.changePct - b.stock.changePct;
     })
     .slice(0, 3);
 
-  const momentumCandidates = candidates
-    .filter((s) => s.changePct >= 3)
+  const momentumCandidates = all
+    .filter((m) => m.sources.has('volume') && m.stock.changePct >= 3)
     .sort((a, b) => {
-      if (a.inVolume !== b.inVolume) return a.inVolume ? -1 : 1;
-      return b.changePct - a.changePct;
+      const ta = a.stock.tradingValue ?? 0;
+      const tb = b.stock.tradingValue ?? 0;
+      if (tb !== ta) return tb - ta;
+      return b.stock.changePct - a.stock.changePct;
     })
     .slice(0, 3);
 
   const foreignWatch = data.foreignBuy
-    .filter((f) => watchlist.has(f.code))
+    .filter((f) => {
+      const w = watchlist.get(f.code);
+      return w !== undefined && isFollowable(w.grade);
+    })
     .slice(0, 3);
 
   const institutionWatch = data.institutionBuy
-    .filter((f) => watchlist.has(f.code))
+    .filter((f) => {
+      const w = watchlist.get(f.code);
+      return w !== undefined && isFollowable(w.grade);
+    })
     .slice(0, 3);
+
+  type PullbackCandidate = { stockCode: string; name: string; grade: StockScored['grade']; totalScore: number; dropFromHighPct: number };
+  const pullbackCandidates: PullbackCandidate[] = [];
+  watchlist.forEach((w, code) => {
+    if (!isFollowable(w.grade)) return;
+    const t = marketTiming[code];
+    if (!t) return;
+    if (t.dropFromHighPct > -15) return;
+    pullbackCandidates.push({
+      stockCode: code,
+      name: w.name,
+      grade: w.grade,
+      totalScore: w.totalScore,
+      dropFromHighPct: t.dropFromHighPct,
+    });
+  });
+  pullbackCandidates.sort((a, b) => a.dropFromHighPct - b.dropFromHighPct);
 
   const noSignal =
     dipCandidates.length === 0 &&
     momentumCandidates.length === 0 &&
     foreignWatch.length === 0 &&
-    institutionWatch.length === 0;
+    institutionWatch.length === 0 &&
+    pullbackCandidates.length === 0;
 
   if (noSignal) {
     return (
@@ -247,35 +296,67 @@ function RecommendationSection({
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-2">
-      <PriceSignal
-        title="분할매수 후보"
-        tone="emerald"
-        hint="워치리스트 B+ 등급 중 오늘 -2% 이상 빠진 종목"
-        items={dipCandidates}
-        watchlist={watchlist}
-      />
-      <PriceSignal
-        title="모멘텀 후보"
-        tone="amber"
-        hint="워치리스트 B+ 등급 중 오늘 +3% 이상 오른 종목"
-        items={momentumCandidates}
-        watchlist={watchlist}
-      />
-      <InvestorSignal
-        title="외국인이 사는 내 종목"
-        tone="sky"
-        hint="외국인 순매수 상위 중 워치리스트 종목"
-        items={foreignWatch}
-        watchlist={watchlist}
-      />
-      <InvestorSignal
-        title="기관이 사는 내 종목"
-        tone="indigo"
-        hint="기관 순매수 상위 중 워치리스트 종목"
-        items={institutionWatch}
-        watchlist={watchlist}
-      />
+    <div className="space-y-3">
+      {pullbackCandidates.length > 0 ? (
+        <div className="rounded-lg border border-sky-500/40 bg-sky-500/10 p-4">
+          <div className="text-sm font-semibold text-sky-200">낙폭 후보</div>
+          <div className="mt-1 text-[11px] text-sky-300/80">
+            워치리스트 B+ 등급 중 52주 신고가 대비 -15% 이상 빠진 종목. 단기 등락(오늘)과 별개로 "충분히
+            조정 받은 우량주" 진입 후보. 더 빠질 수도 있는 점 유의.
+          </div>
+          <ul className="mt-3 space-y-2">
+            {pullbackCandidates.slice(0, 5).map((c) => (
+              <li
+                key={c.stockCode}
+                className="flex items-center justify-between rounded-md border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-slate-100">{c.name}</span>
+                  <span className="text-slate-500">{c.stockCode}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sky-300">
+                    신고가 {c.dropFromHighPct.toFixed(1)}%
+                  </span>
+                  <span className="rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-200">
+                    {c.grade} · {c.totalScore}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <div className="grid gap-3 md:grid-cols-2">
+        <PriceSignal
+          title="분할매수 후보"
+          tone="emerald"
+          hint="워치리스트 B+ 등급 + 거래량 동반 + 오늘 -2% 이상 (거래대금 큰 순)"
+          items={dipCandidates}
+          watchlist={watchlist}
+        />
+        <PriceSignal
+          title="모멘텀 후보"
+          tone="amber"
+          hint="워치리스트 B+ 등급 + 거래량 동반 + 오늘 +3% 이상 (거래대금 큰 순)"
+          items={momentumCandidates}
+          watchlist={watchlist}
+        />
+        <InvestorSignal
+          title="외국인이 사는 내 종목"
+          tone="sky"
+          hint="외국인 순매수 상위 중 워치리스트 종목"
+          items={foreignWatch}
+          watchlist={watchlist}
+        />
+        <InvestorSignal
+          title="기관이 사는 내 종목"
+          tone="indigo"
+          hint="기관 순매수 상위 중 워치리스트 종목"
+          items={institutionWatch}
+          watchlist={watchlist}
+        />
+      </div>
     </div>
   );
 }
@@ -290,7 +371,7 @@ function PriceSignal({
   title: string;
   tone: 'emerald' | 'amber';
   hint: string;
-  items: Candidate[];
+  items: MatchedSignal[];
   watchlist: Map<string, StockScored>;
 }) {
   const border = tone === 'emerald' ? 'border-emerald-500/40' : 'border-amber-500/40';
@@ -304,8 +385,9 @@ function PriceSignal({
         <div className="mt-3 text-xs text-slate-500">해당 조건의 종목 없음</div>
       ) : (
         <ul className="mt-3 space-y-2">
-          {items.map((s) => {
-            const w = watchlist.get(s.code)!;
+          {items.map((m) => {
+            const w = watchlist.get(m.stock.code)!;
+            const s = m.stock;
             return (
               <li
                 key={s.code}
@@ -314,11 +396,9 @@ function PriceSignal({
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-slate-100">{s.name}</span>
                   <span className="text-slate-500">{s.code}</span>
-                  {s.inVolume ? (
-                    <span className="rounded border border-amber-500/50 bg-amber-500/10 px-1 text-[10px] text-amber-300">
-                      거래량↑
-                    </span>
-                  ) : null}
+                  <span className="rounded border border-amber-500/50 bg-amber-500/10 px-1 text-[10px] text-amber-300">
+                    거래량↑
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span
