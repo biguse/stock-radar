@@ -186,18 +186,23 @@ function RecommendationSection({
   data: TrendingResult;
   watchlist: Map<string, StockScored>;
 }) {
-  const dipCandidates = data.losers
-    .filter((s) => {
-      const w = watchlist.get(s.code);
-      return w && (w.grade === 'S' || w.grade === 'A' || w.grade === 'B') && s.changePct <= -2;
-    })
+  const watchlistSeen = new Map<string, TrendingStock>();
+  [...data.volume, ...data.gainers, ...data.losers].forEach((s) => {
+    const w = watchlist.get(s.code);
+    if (!w) return;
+    if (w.grade !== 'S' && w.grade !== 'A' && w.grade !== 'B') return;
+    if (!watchlistSeen.has(s.code)) watchlistSeen.set(s.code, s);
+  });
+  const watchlistInData = Array.from(watchlistSeen.values());
+
+  const dipCandidates = watchlistInData
+    .filter((s) => s.changePct <= -2)
+    .sort((a, b) => a.changePct - b.changePct)
     .slice(0, 3);
 
-  const momentumCandidates = data.gainers
-    .filter((s) => {
-      const w = watchlist.get(s.code);
-      return w && (w.grade === 'S' || w.grade === 'A' || w.grade === 'B') && s.changePct >= 3;
-    })
+  const momentumCandidates = watchlistInData
+    .filter((s) => s.changePct >= 3)
+    .sort((a, b) => b.changePct - a.changePct)
     .slice(0, 3);
 
   const foreignWatch = data.foreignBuy
