@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import rawStocks from '@/data/stocks.sample.json';
 import type { FilterState, SortKey, StockRaw } from '@/types/stock';
 import { scoreStocks } from '@/lib/scoring';
@@ -39,12 +40,20 @@ export default function Page() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 md:px-8">
-      <header className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-50">매수 후보 레이더</h1>
-        <p className="mt-2 max-w-3xl text-sm text-slate-400">
-          지금 살 만한 후보인지, 더 기다릴 종목인지, 아예 피할 종목인지 빠르게 가르는 개인 투자 판단
-          도구입니다.
-        </p>
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-50">매수 후보 레이더</h1>
+          <p className="mt-2 max-w-3xl text-sm text-slate-400">
+            지금 살 만한 후보인지, 더 기다릴 종목인지, 아예 피할 종목인지 빠르게 가르는 개인 투자 판단
+            도구입니다.
+          </p>
+        </div>
+        <Link
+          href="/trending"
+          className="rounded-md border border-amber-500/60 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200 hover:bg-amber-500/20"
+        >
+          오늘 뜨는 종목 →
+        </Link>
       </header>
 
       <section className="mb-6">
