@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import rawStocks from '@/data/stocks.sample.json';
 import type { StockRaw, StockScored } from '@/types/stock';
-import type { TrendingResult, TrendingStock } from '@/lib/trending';
+import type { InvestorFlow, TrendingResult, TrendingStock } from '@/lib/trending';
 import { scoreStocks } from '@/lib/scoring';
 
 type ApiResponse = TrendingResult & { cached?: boolean; error?: string };
@@ -27,11 +27,8 @@ export default function TrendingPage() {
     try {
       const res = await fetch('/api/trending', { cache: 'no-store' });
       const json = (await res.json()) as ApiResponse;
-      if (json.error) {
-        setError(json.error);
-      } else {
-        setData(json);
-      }
+      if (json.error) setError(json.error);
+      else setData(json);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'unknown error');
     } finally {
@@ -48,8 +45,8 @@ export default function TrendingPage() {
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-50">오늘 뜨는 종목</h1>
-          <p className="mt-2 text-sm text-slate-400">
-            네이버 금융 실시간 거래량 / 급등 / 급락 리스트 + 본인 워치리스트 점수 매칭. 빨간{' '}
+          <p className="mt-2 max-w-3xl text-sm text-slate-400">
+            네이버 금융 실시간 데이터 + 본인 워치리스트 점수. 빨간{' '}
             <span className="rounded border border-rose-500/50 bg-rose-500/10 px-1 text-[10px] text-rose-300">
               워치
             </span>{' '}
@@ -89,26 +86,57 @@ export default function TrendingPage() {
 
       {data ? (
         <div className="space-y-6">
-          <RecommendationBanner data={data} watchlist={watchlist} />
+          <RecommendationSection data={data} watchlist={watchlist} />
+          <PumpRiskPanel stocks={data.pumpRisk} />
           <Panel
             title="거래량 / 거래대금 상위"
             tone="sky"
-            description="실시간으로 돈이 가장 많이 몰리는 종목들"
+            description="오늘 가장 돈이 몰린 종목들 (단, ETF·인버스 다수 포함)"
             stocks={data.volume}
             watchlist={watchlist}
             showTradingValue
           />
+          <div className="grid gap-4 md:grid-cols-2">
+            <InvestorPanel
+              title="외국인 순매수 상위"
+              tone="emerald"
+              description="외국인이 오늘 가장 많이 산 종목"
+              flows={data.foreignBuy}
+              watchlist={watchlist}
+            />
+            <InvestorPanel
+              title="외국인 순매도 상위"
+              tone="rose"
+              description="외국인이 오늘 가장 많이 판 종목"
+              flows={data.foreignSell}
+              watchlist={watchlist}
+            />
+            <InvestorPanel
+              title="기관 순매수 상위"
+              tone="emerald"
+              description="기관(연기금·투신·보험 등)이 오늘 가장 많이 산 종목"
+              flows={data.institutionBuy}
+              watchlist={watchlist}
+            />
+            <InvestorPanel
+              title="기관 순매도 상위"
+              tone="rose"
+              description="기관이 오늘 가장 많이 판 종목"
+              flows={data.institutionSell}
+              watchlist={watchlist}
+            />
+          </div>
           <Panel
             title="급등 종목"
             tone="emerald"
-            description="오늘 등락률이 가장 높은 종목들"
+            description="오늘 등락률 상위"
             stocks={data.gainers}
             watchlist={watchlist}
           />
           <Panel
             title="급락 종목"
             tone="rose"
-            description="오늘 등락률이 가장 낮은 종목들 — 저점 매수 후보 또는 회피 대상"
+            description="오늘 등락률 하위 — 저점 매수 후보 또는 회피 대상"
             stocks={data.losers}
             watchlist={watchlist}
           />
@@ -126,7 +154,7 @@ export default function TrendingPage() {
   );
 }
 
-function RecommendationBanner({
+function RecommendationSection({
   data,
   watchlist,
 }: {
@@ -147,35 +175,63 @@ function RecommendationBanner({
     })
     .slice(0, 3);
 
-  if (dipCandidates.length === 0 && momentumCandidates.length === 0) {
+  const foreignWatch = data.foreignBuy
+    .filter((f) => watchlist.has(f.code))
+    .slice(0, 3);
+
+  const institutionWatch = data.institutionBuy
+    .filter((f) => watchlist.has(f.code))
+    .slice(0, 3);
+
+  const noSignal =
+    dipCandidates.length === 0 &&
+    momentumCandidates.length === 0 &&
+    foreignWatch.length === 0 &&
+    institutionWatch.length === 0;
+
+  if (noSignal) {
     return (
       <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4 text-xs text-slate-400">
-        오늘 본인 워치리스트(B 등급 이상)와 겹치는 급등·급락 종목이 없습니다. 워치리스트를 늘리면 신호가 자주 잡힙니다.
+        오늘 본인 워치리스트와 겹치는 강한 신호가 없습니다. 워치리스트를 늘리면 신호 빈도가 높아집니다.
       </div>
     );
   }
 
   return (
     <div className="grid gap-3 md:grid-cols-2">
-      <Recommendation
+      <PriceSignal
         title="분할매수 후보"
         tone="emerald"
         hint="워치리스트 B+ 등급 중 오늘 -2% 이상 빠진 종목"
         items={dipCandidates}
         watchlist={watchlist}
       />
-      <Recommendation
+      <PriceSignal
         title="모멘텀 후보"
         tone="amber"
         hint="워치리스트 B+ 등급 중 오늘 +3% 이상 오른 종목"
         items={momentumCandidates}
         watchlist={watchlist}
       />
+      <InvestorSignal
+        title="외국인이 사는 내 종목"
+        tone="sky"
+        hint="외국인 순매수 상위 중 워치리스트 종목"
+        items={foreignWatch}
+        watchlist={watchlist}
+      />
+      <InvestorSignal
+        title="기관이 사는 내 종목"
+        tone="indigo"
+        hint="기관 순매수 상위 중 워치리스트 종목"
+        items={institutionWatch}
+        watchlist={watchlist}
+      />
     </div>
   );
 }
 
-function Recommendation({
+function PriceSignal({
   title,
   tone,
   hint,
@@ -230,6 +286,99 @@ function Recommendation({
   );
 }
 
+function InvestorSignal({
+  title,
+  tone,
+  hint,
+  items,
+  watchlist,
+}: {
+  title: string;
+  tone: 'sky' | 'indigo';
+  hint: string;
+  items: InvestorFlow[];
+  watchlist: Map<string, StockScored>;
+}) {
+  const border = tone === 'sky' ? 'border-sky-500/40' : 'border-indigo-500/40';
+  const titleColor = tone === 'sky' ? 'text-sky-300' : 'text-indigo-300';
+
+  return (
+    <div className={`rounded-lg border ${border} bg-slate-900/50 p-4`}>
+      <div className={`text-sm font-semibold ${titleColor}`}>{title}</div>
+      <div className="mt-1 text-[11px] text-slate-400">{hint}</div>
+      {items.length === 0 ? (
+        <div className="mt-3 text-xs text-slate-500">해당 조건의 종목 없음</div>
+      ) : (
+        <ul className="mt-3 space-y-2">
+          {items.map((s) => {
+            const w = watchlist.get(s.code)!;
+            return (
+              <li
+                key={s.code}
+                className="flex items-center justify-between rounded-md border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs"
+              >
+                <div>
+                  <span className="font-semibold text-slate-100">{s.name}</span>
+                  <span className="ml-2 text-slate-500">{s.code}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-300">{formatAmount(s.amount)}</span>
+                  <span className="rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-200">
+                    {w.grade} · {w.totalScore}
+                  </span>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function PumpRiskPanel({ stocks }: { stocks: TrendingStock[] }) {
+  if (stocks.length === 0) {
+    return (
+      <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3 text-[11px] text-slate-500">
+        ⚠️ 작전주 의심 종목: 현재 없음 (시총 1,000억 미만 + 등락 +15% 이상 종목 없음)
+      </div>
+    );
+  }
+  return (
+    <section className="rounded-lg border-2 border-rose-500/60 bg-rose-950/30 p-4">
+      <div className="text-sm font-semibold text-rose-200">
+        ⚠️ 작전주 의심 — 충동매수 금지
+      </div>
+      <div className="mt-1 text-[11px] text-rose-300/80">
+        시총 1,000억원 미만 + 오늘 +15% 이상 급등. 정상적인 호재일 수도, 작전 세력일 수도 있습니다.
+        뉴스·공시 확인 없이 들어가지 마세요.
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {stocks.map((s) => (
+          <a
+            key={s.code}
+            href={`https://finance.naver.com/item/main.naver?code=${s.code}`}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center justify-between rounded-md border border-rose-500/30 bg-slate-950/60 px-3 py-2 text-xs hover:border-rose-400"
+          >
+            <div>
+              <span className="font-semibold text-slate-100">{s.name}</span>
+              <span className="ml-2 text-[10px] text-slate-500">{s.code} · {s.market}</span>
+            </div>
+            <div className="flex items-center gap-2 text-right">
+              <span className="text-rose-300 font-medium">+{s.changePct.toFixed(2)}%</span>
+              <span className="text-[10px] text-slate-500">
+                {s.marketCap !== null ? `시총 ${s.marketCap.toLocaleString('ko-KR')}억` : '시총 ?'}
+              </span>
+            </div>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function Panel({
   title,
   tone,
@@ -261,7 +410,12 @@ function Panel({
           <div className="px-4 py-6 text-center text-xs text-slate-500">데이터 없음</div>
         ) : (
           stocks.map((s) => (
-            <Row key={`${s.code}-${s.rank}`} stock={s} scored={watchlist.get(s.code) ?? null} showTradingValue={showTradingValue} />
+            <PriceRow
+              key={`${s.code}-${s.rank}`}
+              stock={s}
+              scored={watchlist.get(s.code) ?? null}
+              showTradingValue={showTradingValue}
+            />
           ))
         )}
       </div>
@@ -269,7 +423,42 @@ function Panel({
   );
 }
 
-function Row({
+function InvestorPanel({
+  title,
+  tone,
+  description,
+  flows,
+  watchlist,
+}: {
+  title: string;
+  tone: 'emerald' | 'rose';
+  description: string;
+  flows: InvestorFlow[];
+  watchlist: Map<string, StockScored>;
+}) {
+  const border = tone === 'emerald' ? 'border-emerald-500/40' : 'border-rose-500/40';
+  const titleColor = tone === 'emerald' ? 'text-emerald-200' : 'text-rose-200';
+
+  return (
+    <section className={`rounded-lg border ${border} bg-slate-900/40`}>
+      <div className="border-b border-slate-800 px-4 py-3">
+        <div className={`text-sm font-semibold ${titleColor}`}>{title}</div>
+        <div className="text-[11px] text-slate-400">{description}</div>
+      </div>
+      <div className="divide-y divide-slate-800/60">
+        {flows.length === 0 ? (
+          <div className="px-4 py-6 text-center text-xs text-slate-500">데이터 없음</div>
+        ) : (
+          flows.map((f) => (
+            <InvestorRow key={`${f.code}-${f.rank}`} flow={f} scored={watchlist.get(f.code) ?? null} />
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PriceRow({
   stock,
   scored,
   showTradingValue,
@@ -283,24 +472,22 @@ function Row({
     <div className="flex items-center justify-between px-4 py-2.5 text-xs hover:bg-slate-900/30">
       <div className="flex items-center gap-3">
         <span className="w-6 text-right text-slate-500">{stock.rank}</span>
-        <div>
-          <div className="flex items-center gap-2">
-            <a
-              href={`https://finance.naver.com/item/main.naver?code=${stock.code}`}
-              target="_blank"
-              rel="noreferrer"
-              className="font-medium text-slate-100 hover:text-sky-300 hover:underline"
-            >
-              {stock.name}
-            </a>
-            <span className="text-[10px] text-slate-500">{stock.code}</span>
-            <span className="text-[10px] text-slate-600">{stock.market}</span>
-            {scored ? (
-              <span className="rounded border border-rose-500/50 bg-rose-500/10 px-1 text-[10px] text-rose-300">
-                워치 · {scored.grade} · {scored.totalScore}
-              </span>
-            ) : null}
-          </div>
+        <div className="flex items-center gap-2">
+          <a
+            href={`https://finance.naver.com/item/main.naver?code=${stock.code}`}
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-slate-100 hover:text-sky-300 hover:underline"
+          >
+            {stock.name}
+          </a>
+          <span className="text-[10px] text-slate-500">{stock.code}</span>
+          <span className="text-[10px] text-slate-600">{stock.market}</span>
+          {scored ? (
+            <span className="rounded border border-rose-500/50 bg-rose-500/10 px-1 text-[10px] text-rose-300">
+              워치 · {scored.grade} · {scored.totalScore}
+            </span>
+          ) : null}
         </div>
       </div>
       <div className="flex items-center gap-4 text-right">
@@ -320,6 +507,34 @@ function Row({
   );
 }
 
+function InvestorRow({ flow, scored }: { flow: InvestorFlow; scored: StockScored | null }) {
+  return (
+    <div className="flex items-center justify-between px-4 py-2.5 text-xs hover:bg-slate-900/30">
+      <div className="flex items-center gap-3">
+        <span className="w-6 text-right text-slate-500">{flow.rank}</span>
+        <div className="flex items-center gap-2">
+          <a
+            href={`https://finance.naver.com/item/main.naver?code=${flow.code}`}
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-slate-100 hover:text-sky-300 hover:underline"
+          >
+            {flow.name}
+          </a>
+          <span className="text-[10px] text-slate-500">{flow.code}</span>
+          <span className="text-[10px] text-slate-600">{flow.market}</span>
+          {scored ? (
+            <span className="rounded border border-rose-500/50 bg-rose-500/10 px-1 text-[10px] text-rose-300">
+              워치 · {scored.grade}
+            </span>
+          ) : null}
+        </div>
+      </div>
+      <div className="text-right text-slate-300">{formatAmount(flow.amount)}</div>
+    </div>
+  );
+}
+
 function formatVolume(v: number): string {
   if (v >= 1_000_000) return `${(v / 10_000).toFixed(1)}만`;
   return v.toLocaleString('ko-KR');
@@ -328,6 +543,13 @@ function formatVolume(v: number): string {
 function formatValue(v: number): string {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}조`;
   if (v >= 10_000) return `${(v / 10_000).toFixed(0)}억`;
+  if (v > 0) return `${v.toLocaleString('ko-KR')}백만`;
+  return '-';
+}
+
+function formatAmount(v: number): string {
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}조`;
+  if (v >= 10_000) return `${(v / 10_000).toFixed(1)}억`;
   if (v > 0) return `${v.toLocaleString('ko-KR')}백만`;
   return '-';
 }

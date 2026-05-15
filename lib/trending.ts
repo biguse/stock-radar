@@ -13,21 +13,90 @@ export type TrendingStock = {
   changePct: number;
   volume: number;
   tradingValue: number | null;
+  marketCap: number | null;
 };
 
-type NaverSource = {
+export type InvestorFlow = {
+  rank: number;
+  name: string;
+  code: string;
+  market: Market;
+  shares: number;
+  amount: number;
+  dailyVolume: number;
+};
+
+type NaverPriceSource = {
   url: string;
   market: Market;
   category: TrendingCategory;
 };
 
-const SOURCES: NaverSource[] = [
+type NaverInvestorSource = {
+  url: string;
+  market: Market;
+  side: 'buy' | 'sell';
+  investor: '외국인' | '기관';
+};
+
+const PRICE_SOURCES: NaverPriceSource[] = [
   { url: 'https://finance.naver.com/sise/sise_quant.naver?sosok=0', market: 'KOSPI', category: 'volume' },
   { url: 'https://finance.naver.com/sise/sise_quant.naver?sosok=1', market: 'KOSDAQ', category: 'volume' },
   { url: 'https://finance.naver.com/sise/sise_rise.naver?sosok=0', market: 'KOSPI', category: 'gainers' },
   { url: 'https://finance.naver.com/sise/sise_rise.naver?sosok=1', market: 'KOSDAQ', category: 'gainers' },
   { url: 'https://finance.naver.com/sise/sise_fall.naver?sosok=0', market: 'KOSPI', category: 'losers' },
   { url: 'https://finance.naver.com/sise/sise_fall.naver?sosok=1', market: 'KOSDAQ', category: 'losers' },
+];
+
+const INVESTOR_SOURCES: NaverInvestorSource[] = [
+  {
+    url: 'https://finance.naver.com/sise/sise_deal_rank_iframe.naver?sosok=01&investor_gubun=9000&type=buy',
+    market: 'KOSPI',
+    side: 'buy',
+    investor: '외국인',
+  },
+  {
+    url: 'https://finance.naver.com/sise/sise_deal_rank_iframe.naver?sosok=02&investor_gubun=9000&type=buy',
+    market: 'KOSDAQ',
+    side: 'buy',
+    investor: '외국인',
+  },
+  {
+    url: 'https://finance.naver.com/sise/sise_deal_rank_iframe.naver?sosok=01&investor_gubun=9000&type=sell',
+    market: 'KOSPI',
+    side: 'sell',
+    investor: '외국인',
+  },
+  {
+    url: 'https://finance.naver.com/sise/sise_deal_rank_iframe.naver?sosok=02&investor_gubun=9000&type=sell',
+    market: 'KOSDAQ',
+    side: 'sell',
+    investor: '외국인',
+  },
+  {
+    url: 'https://finance.naver.com/sise/sise_deal_rank_iframe.naver?sosok=01&investor_gubun=1000&type=buy',
+    market: 'KOSPI',
+    side: 'buy',
+    investor: '기관',
+  },
+  {
+    url: 'https://finance.naver.com/sise/sise_deal_rank_iframe.naver?sosok=02&investor_gubun=1000&type=buy',
+    market: 'KOSDAQ',
+    side: 'buy',
+    investor: '기관',
+  },
+  {
+    url: 'https://finance.naver.com/sise/sise_deal_rank_iframe.naver?sosok=01&investor_gubun=1000&type=sell',
+    market: 'KOSPI',
+    side: 'sell',
+    investor: '기관',
+  },
+  {
+    url: 'https://finance.naver.com/sise/sise_deal_rank_iframe.naver?sosok=02&investor_gubun=1000&type=sell',
+    market: 'KOSDAQ',
+    side: 'sell',
+    investor: '기관',
+  },
 ];
 
 async function fetchNaver(url: string): Promise<string> {
@@ -50,7 +119,7 @@ function parseNumber(text: string): number {
   return Number(cleaned);
 }
 
-function parseTable(html: string, source: NaverSource): TrendingStock[] {
+function parseSiseTable(html: string, source: NaverPriceSource): TrendingStock[] {
   const $ = cheerio.load(html);
   const rows: TrendingStock[] = [];
 
@@ -79,19 +148,44 @@ function parseTable(html: string, source: NaverSource): TrendingStock[] {
     const volume = parseNumber($(numberCells[3]).text());
 
     let tradingValue: number | null = null;
-    if (source.category === 'volume' && numberCells.length >= 5) {
-      tradingValue = parseNumber($(numberCells[4]).text());
+    let marketCap: number | null = null;
+    if (source.category === 'volume') {
+      if (numberCells.length >= 5) tradingValue = parseNumber($(numberCells[4]).text());
+      if (numberCells.length >= 8) marketCap = parseNumber($(numberCells[7]).text());
     }
 
+    rows.push({ rank, name, code, market: source.market, price, changePct, volume, tradingValue, marketCap });
+  });
+
+  return rows;
+}
+
+function parseInvestorTable(html: string, source: NaverInvestorSource): InvestorFlow[] {
+  const $ = cheerio.load(html);
+  const rows: InvestorFlow[] = [];
+  let rank = 0;
+
+  $('a.tltle').each((_, a) => {
+    const $a = $(a);
+    const href = $a.attr('href') ?? '';
+    const codeMatch = href.match(/code=(\d{6})/);
+    if (!codeMatch) return;
+    const code = codeMatch[1];
+    const name = $a.attr('title') ?? $a.text().trim();
+
+    const $row = $a.closest('tr');
+    const numberCells = $row.find('td.number');
+    if (numberCells.length < 3) return;
+
+    rank += 1;
     rows.push({
       rank,
       name,
       code,
       market: source.market,
-      price,
-      changePct,
-      volume,
-      tradingValue,
+      shares: parseNumber($(numberCells[0]).text()),
+      amount: parseNumber($(numberCells[1]).text()),
+      dailyVolume: parseNumber($(numberCells[2]).text()),
     });
   });
 
@@ -103,18 +197,31 @@ export type TrendingResult = {
   volume: TrendingStock[];
   gainers: TrendingStock[];
   losers: TrendingStock[];
+  foreignBuy: InvestorFlow[];
+  foreignSell: InvestorFlow[];
+  institutionBuy: InvestorFlow[];
+  institutionSell: InvestorFlow[];
+  pumpRisk: TrendingStock[];
 };
 
 export async function fetchTrending(limit = 25): Promise<TrendingResult> {
-  const fetched = await Promise.all(
-    SOURCES.map(async (source) => ({
-      source,
-      stocks: parseTable(await fetchNaver(source.url), source),
-    })),
-  );
+  const [priceFetched, investorFetched] = await Promise.all([
+    Promise.all(
+      PRICE_SOURCES.map(async (source) => ({
+        source,
+        stocks: parseSiseTable(await fetchNaver(source.url), source),
+      })),
+    ),
+    Promise.all(
+      INVESTOR_SOURCES.map(async (source) => ({
+        source,
+        flows: parseInvestorTable(await fetchNaver(source.url), source),
+      })),
+    ),
+  ]);
 
-  function mergeAndRank(category: TrendingCategory): TrendingStock[] {
-    const all = fetched.filter((f) => f.source.category === category).flatMap((f) => f.stocks);
+  function mergePrice(category: TrendingCategory): TrendingStock[] {
+    const all = priceFetched.filter((f) => f.source.category === category).flatMap((f) => f.stocks);
     if (category === 'volume') {
       all.sort((a, b) => (b.tradingValue ?? b.volume) - (a.tradingValue ?? a.volume));
     } else if (category === 'gainers') {
@@ -125,10 +232,56 @@ export async function fetchTrending(limit = 25): Promise<TrendingResult> {
     return all.slice(0, limit).map((s, i) => ({ ...s, rank: i + 1 }));
   }
 
+  function mergeInvestor(investor: '외국인' | '기관', side: 'buy' | 'sell'): InvestorFlow[] {
+    const all = investorFetched
+      .filter((f) => f.source.investor === investor && f.source.side === side)
+      .flatMap((f) => f.flows);
+    const seen = new Set<string>();
+    const deduped: InvestorFlow[] = [];
+    for (const f of all.sort((a, b) => b.amount - a.amount)) {
+      if (seen.has(f.code)) continue;
+      seen.add(f.code);
+      deduped.push(f);
+    }
+    return deduped.slice(0, limit).map((f, i) => ({ ...f, rank: i + 1 }));
+  }
+
+  const gainersAll = priceFetched.filter((f) => f.source.category === 'gainers').flatMap((f) => f.stocks);
+  const volumeAll = priceFetched.filter((f) => f.source.category === 'volume').flatMap((f) => f.stocks);
+  const capByCode = new Map<string, number>();
+  volumeAll.forEach((s) => {
+    if (s.marketCap !== null) capByCode.set(s.code, s.marketCap);
+  });
+
+  const seenPump = new Set<string>();
+  const pumpRisk: TrendingStock[] = gainersAll
+    .filter((s) => {
+      if (s.changePct < 15) return false;
+      const cap = capByCode.get(s.code);
+      if (cap === null || cap === undefined) return false;
+      return cap < 1000;
+    })
+    .sort((a, b) => b.changePct - a.changePct)
+    .filter((s) => {
+      if (seenPump.has(s.code)) return false;
+      seenPump.add(s.code);
+      return true;
+    })
+    .slice(0, 20)
+    .map((s, i) => {
+      const cap = capByCode.get(s.code) ?? null;
+      return { ...s, marketCap: cap, rank: i + 1 };
+    });
+
   return {
     fetchedAt: new Date().toISOString(),
-    volume: mergeAndRank('volume'),
-    gainers: mergeAndRank('gainers'),
-    losers: mergeAndRank('losers'),
+    volume: mergePrice('volume'),
+    gainers: mergePrice('gainers'),
+    losers: mergePrice('losers'),
+    foreignBuy: mergeInvestor('외국인', 'buy'),
+    foreignSell: mergeInvestor('외국인', 'sell'),
+    institutionBuy: mergeInvestor('기관', 'buy'),
+    institutionSell: mergeInvestor('기관', 'sell'),
+    pumpRisk,
   };
 }
