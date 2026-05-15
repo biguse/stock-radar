@@ -64,11 +64,49 @@ function isFundLike(name: string): boolean {
   );
 }
 
+type ColumnMap = {
+  현재가?: number;
+  등락률?: number;
+  시가총액?: number;
+  외국인비율?: number;
+  PER?: number;
+  ROE?: number;
+};
+
+function buildColumnMap($: cheerio.CheerioAPI): ColumnMap {
+  const map: ColumnMap = {};
+  $('table.type_2 thead th').each((i, th) => {
+    const text = $(th).text().trim();
+    if (text === '현재가') map.현재가 = i;
+    else if (text === '등락률') map.등락률 = i;
+    else if (text === '시가총액') map.시가총액 = i;
+    else if (text === '외국인비율') map.외국인비율 = i;
+    else if (text === 'PER') map.PER = i;
+    else if (text === 'ROE') map.ROE = i;
+  });
+  return map;
+}
+
 function parseMarketSum(html: string, market: Market): ScreenerStock[] {
   const $ = cheerio.load(html);
+  const cols = buildColumnMap($);
+
+  if (
+    cols.현재가 === undefined ||
+    cols.등락률 === undefined ||
+    cols.시가총액 === undefined ||
+    cols.외국인비율 === undefined ||
+    cols.PER === undefined ||
+    cols.ROE === undefined
+  ) {
+    throw new Error(
+      `Naver market_sum header mismatch: ${JSON.stringify(cols)} (expected 현재가, 등락률, 시가총액, 외국인비율, PER, ROE)`,
+    );
+  }
+
   const rows: ScreenerStock[] = [];
 
-  $('table.type_2 tr').each((_, tr) => {
+  $('table.type_2 tbody tr').each((_, tr) => {
     const $tr = $(tr);
     const link = $tr.find('a.tltle').first();
     if (link.length === 0) return;
@@ -78,19 +116,21 @@ function parseMarketSum(html: string, market: Market): ScreenerStock[] {
     if (!codeMatch) return;
     const code = codeMatch[1];
 
-    const numberCells = $tr.find('td.number');
-    if (numberCells.length < 10) return;
+    const cells = $tr.children('td').toArray();
+    if (cells.length <= (cols.ROE ?? 0)) return;
 
-    const price = parseInt0($(numberCells[0]).text());
-    const changePctText = $(numberCells[2]).text();
-    const isDown = /-/.test(changePctText) || $tr.find('em.bu_pdn').length > 0;
-    const rawPct = parseInt0(changePctText);
+    const cellText = (idx?: number): string => (idx === undefined ? '' : $(cells[idx]).text());
+
+    const price = parseInt0(cellText(cols.현재가));
+    const changeText = cellText(cols.등락률);
+    const isDown = changeText.includes('-') || $tr.find('em.bu_pdn').length > 0;
+    const rawPct = parseInt0(changeText);
     const changePct = isDown && rawPct > 0 ? -rawPct : rawPct;
 
-    const marketCap = parseInt0($(numberCells[4]).text());
-    const foreignRatio = parseRatio($(numberCells[6]).text()) ?? 0;
-    const per = parseRatio($(numberCells[8]).text());
-    const roe = parseRatio($(numberCells[9]).text());
+    const marketCap = parseInt0(cellText(cols.시가총액));
+    const foreignRatio = parseRatio(cellText(cols.외국인비율)) ?? 0;
+    const per = parseRatio(cellText(cols.PER));
+    const roe = parseRatio(cellText(cols.ROE));
 
     rows.push({
       rank: 0,
@@ -151,7 +191,14 @@ export async function fetchScreener(topN = 30): Promise<ScreenerResult> {
   }
 
   const eligible = universe.filter(
-    (s) => !s.isPreferred && s.per !== null && s.per > 0 && s.roe !== null && s.roe > 0,
+    (s) =>
+      !s.isPreferred &&
+      s.marketCap >= 1000 &&
+      s.per !== null &&
+      s.per >= 1 &&
+      s.roe !== null &&
+      s.roe > 0 &&
+      s.roe <= 80,
   );
 
   eligible.forEach((s) => {

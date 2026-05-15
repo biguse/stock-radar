@@ -185,6 +185,8 @@ export default function TrendingPage() {
   );
 }
 
+type Candidate = TrendingStock & { inVolume: boolean };
+
 function RecommendationSection({
   data,
   watchlist,
@@ -192,6 +194,8 @@ function RecommendationSection({
   data: TrendingResult;
   watchlist: Map<string, StockScored>;
 }) {
+  const volumeCodes = new Set(data.volume.map((s) => s.code));
+
   const watchlistSeen = new Map<string, TrendingStock>();
   [...data.volume, ...data.gainers, ...data.losers].forEach((s) => {
     const w = watchlist.get(s.code);
@@ -199,16 +203,25 @@ function RecommendationSection({
     if (w.grade !== 'S' && w.grade !== 'A' && w.grade !== 'B') return;
     if (!watchlistSeen.has(s.code)) watchlistSeen.set(s.code, s);
   });
-  const watchlistInData = Array.from(watchlistSeen.values());
+  const candidates: Candidate[] = Array.from(watchlistSeen.values()).map((s) => ({
+    ...s,
+    inVolume: volumeCodes.has(s.code),
+  }));
 
-  const dipCandidates = watchlistInData
+  const dipCandidates = candidates
     .filter((s) => s.changePct <= -2)
-    .sort((a, b) => a.changePct - b.changePct)
+    .sort((a, b) => {
+      if (a.inVolume !== b.inVolume) return a.inVolume ? -1 : 1;
+      return a.changePct - b.changePct;
+    })
     .slice(0, 3);
 
-  const momentumCandidates = watchlistInData
+  const momentumCandidates = candidates
     .filter((s) => s.changePct >= 3)
-    .sort((a, b) => b.changePct - a.changePct)
+    .sort((a, b) => {
+      if (a.inVolume !== b.inVolume) return a.inVolume ? -1 : 1;
+      return b.changePct - a.changePct;
+    })
     .slice(0, 3);
 
   const foreignWatch = data.foreignBuy
@@ -277,7 +290,7 @@ function PriceSignal({
   title: string;
   tone: 'emerald' | 'amber';
   hint: string;
-  items: TrendingStock[];
+  items: Candidate[];
   watchlist: Map<string, StockScored>;
 }) {
   const border = tone === 'emerald' ? 'border-emerald-500/40' : 'border-amber-500/40';
@@ -298,9 +311,14 @@ function PriceSignal({
                 key={s.code}
                 className="flex items-center justify-between rounded-md border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs"
               >
-                <div>
+                <div className="flex items-center gap-2">
                   <span className="font-semibold text-slate-100">{s.name}</span>
-                  <span className="ml-2 text-slate-500">{s.code}</span>
+                  <span className="text-slate-500">{s.code}</span>
+                  {s.inVolume ? (
+                    <span className="rounded border border-amber-500/50 bg-amber-500/10 px-1 text-[10px] text-amber-300">
+                      거래량↑
+                    </span>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-2">
                   <span
