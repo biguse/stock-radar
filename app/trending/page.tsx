@@ -77,6 +77,12 @@ export default function TrendingPage() {
           >
             ← 워치리스트
           </Link>
+          <Link
+            href="/screener"
+            className="rounded-md border border-emerald-500/60 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-500/20"
+          >
+            스크리너 →
+          </Link>
           <button
             type="button"
             onClick={load}

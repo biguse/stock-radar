@@ -48,12 +48,20 @@ export default function Page() {
             도구입니다.
           </p>
         </div>
-        <Link
-          href="/trending"
-          className="rounded-md border border-amber-500/60 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200 hover:bg-amber-500/20"
-        >
-          오늘 뜨는 종목 →
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/screener"
+            className="rounded-md border border-emerald-500/60 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-500/20"
+          >
+            저평가 우량 스크리너 →
+          </Link>
+          <Link
+            href="/trending"
+            className="rounded-md border border-amber-500/60 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200 hover:bg-amber-500/20"
+          >
+            오늘 뜨는 종목 →
+          </Link>
+        </div>
       </header>
 
       <section className="mb-6">
