@@ -44,11 +44,27 @@ function scoreCashFlow(stock: StockRaw): number {
   return 3;
 }
 
+function isDebtHeavyIndustry(industry: string): boolean {
+  return ['금융', '은행', '보험', '증권', '카드', '캐피탈', '자동차', '건설', '조선'].some((keyword) =>
+    industry.includes(keyword),
+  );
+}
+
 function scoreStability(stock: StockRaw): number {
-  if (stock.debtRatio <= 50) return 15;
-  if (stock.debtRatio <= 100) return 13;
-  if (stock.debtRatio <= 200) return 10;
-  if (stock.debtRatio <= 300) return 6;
+  const debt = stock.debtRatio;
+
+  if (isDebtHeavyIndustry(stock.industry)) {
+    if (debt <= 150) return 15;
+    if (debt <= 250) return 13;
+    if (debt <= 400) return 10;
+    if (debt <= 600) return 6;
+    return 2;
+  }
+
+  if (debt <= 50) return 15;
+  if (debt <= 100) return 13;
+  if (debt <= 200) return 10;
+  if (debt <= 300) return 6;
   return 2;
 }
 

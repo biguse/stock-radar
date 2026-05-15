@@ -7,7 +7,12 @@ import type { StockRaw, StockScored } from '@/types/stock';
 import type { InvestorFlow, TrendingResult, TrendingStock } from '@/lib/trending';
 import { scoreStocks } from '@/lib/scoring';
 
-type ApiResponse = TrendingResult & { cached?: boolean; error?: string };
+type ApiResponse = TrendingResult & {
+  cached?: boolean;
+  stale?: boolean;
+  warning?: string;
+  error?: string;
+};
 
 export default function TrendingPage() {
   const watchlist = useMemo(() => {
@@ -26,9 +31,21 @@ export default function TrendingPage() {
     setError(null);
     try {
       const res = await fetch('/api/trending', { cache: 'no-store' });
-      const json = (await res.json()) as ApiResponse;
-      if (json.error) setError(json.error);
-      else setData(json);
+      const json = (await res.json().catch(() => null)) as ApiResponse | null;
+      if (!res.ok) {
+        const message = json?.error ?? `HTTP ${res.status}`;
+        setError(message);
+        return;
+      }
+      if (!json) {
+        setError('빈 응답 (JSON 파싱 실패)');
+        return;
+      }
+      if (json.error) {
+        setError(json.error);
+        return;
+      }
+      setData(json);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'unknown error');
     } finally {
@@ -72,9 +89,17 @@ export default function TrendingPage() {
       </header>
 
       {data ? (
-        <div className="mb-4 text-[11px] text-slate-500">
-          기준 시각: {new Date(data.fetchedAt).toLocaleString('ko-KR')}
-          {data.cached ? ' · 캐시 (최대 5분)' : ' · 방금 가져옴'}
+        <div className="mb-4 space-y-1">
+          <div className="text-[11px] text-slate-500">
+            기준 시각: {new Date(data.fetchedAt).toLocaleString('ko-KR')}
+            {data.cached ? ' · 캐시 (최대 5분)' : ' · 방금 가져옴'}
+            {data.stale ? ' · ⚠️ 갱신 실패 — 이전 데이터 표시' : ''}
+          </div>
+          {data.warning ? (
+            <div className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200">
+              경고: {data.warning}
+            </div>
+          ) : null}
         </div>
       ) : null}
 

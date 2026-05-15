@@ -119,6 +119,13 @@ function parseNumber(text: string): number {
   return Number(cleaned);
 }
 
+function assertEnoughRows<T>(rows: T[], label: string): T[] {
+  if (rows.length < 5) {
+    throw new Error(`Naver parse failed: too few rows for ${label}`);
+  }
+  return rows;
+}
+
 function parseSiseTable(html: string, source: NaverPriceSource): TrendingStock[] {
   const $ = cheerio.load(html);
   const rows: TrendingStock[] = [];
@@ -209,7 +216,10 @@ export async function fetchTrending(limit = 25): Promise<TrendingResult> {
     Promise.all(
       PRICE_SOURCES.map(async (source) => ({
         source,
-        stocks: parseSiseTable(await fetchNaver(source.url), source),
+        stocks: assertEnoughRows(
+          parseSiseTable(await fetchNaver(source.url), source),
+          `${source.market}-${source.category}`,
+        ),
       })),
     ),
     Promise.all(
