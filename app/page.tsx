@@ -52,6 +52,12 @@ export default function Page() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
+            href="/genius"
+            className="rounded-md border border-indigo-500/60 bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-200 hover:bg-indigo-500/20"
+          >
+            거장의 눈 →
+          </Link>
+          <Link
             href="/screener"
             className="rounded-md border border-emerald-500/60 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-500/20"
           >

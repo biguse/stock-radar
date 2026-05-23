@@ -84,6 +84,12 @@ export default function ScreenerPage() {
             ← 워치리스트
           </Link>
           <Link
+            href="/genius"
+            className="rounded-md border border-indigo-500/60 bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-200 hover:bg-indigo-500/20"
+          >
+            거장의 눈 →
+          </Link>
+          <Link
             href="/trending"
             className="rounded-md border border-amber-500/60 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200 hover:bg-amber-500/20"
           >
