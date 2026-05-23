@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import rawStocks from '@/data/stocks.sample.json';
 import type { StockRaw, StockScored } from '@/types/stock';
 import type { InvestorFlow, TrendingResult, TrendingStock } from '@/lib/trending';
@@ -79,34 +78,14 @@ export default function TrendingPage() {
             배지는 본인 워치리스트에 있는 종목입니다.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Link
-            href="/"
-            className="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:border-slate-500"
-          >
-            ← 워치리스트
-          </Link>
-          <Link
-            href="/genius"
-            className="rounded-md border border-indigo-500/60 bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-200 hover:bg-indigo-500/20"
-          >
-            거장의 눈 →
-          </Link>
-          <Link
-            href="/screener"
-            className="rounded-md border border-emerald-500/60 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-500/20"
-          >
-            스크리너 →
-          </Link>
-          <button
-            type="button"
-            onClick={load}
-            disabled={loading}
-            className="rounded-md border border-sky-500 bg-sky-500/20 px-3 py-1.5 text-xs text-sky-200 hover:bg-sky-500/30 disabled:opacity-50"
-          >
-            {loading ? '불러오는 중…' : '새로고침'}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={load}
+          disabled={loading}
+          className="rounded-md border border-sky-500 bg-sky-500/20 px-3 py-1.5 text-xs text-sky-200 hover:bg-sky-500/30 disabled:opacity-50"
+        >
+          {loading ? '불러오는 중…' : '새로고침'}
+        </button>
       </header>
 
       {data ? (

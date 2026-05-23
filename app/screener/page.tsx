@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import rawStocks from '@/data/stocks.sample.json';
 import type { StockRaw, StockScored, MarketFilter } from '@/types/stock';
 import type { ScreenerResult, ScreenerStock } from '@/lib/screener';
@@ -78,38 +77,17 @@ export default function ScreenerPage() {
           <h1 className="text-3xl font-bold tracking-tight text-slate-50">저평가 우량 스크리너</h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-400">
             조엘 그린블라트 <strong>마법공식</strong>으로 코스피·코스닥 시총 상위 종목에서{' '}
-            <strong>"PER 낮으면서 ROE 높은"</strong> 종목 자동 발굴. PER이 낮을수록(=싸다) + ROE가 높을수록(=좋다)
-            합산 순위가 작아져 상위로 올라옵니다.
+            <strong>"PER 낮으면서 ROE 높은"</strong> 종목 자동 발굴.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Link
-            href="/"
-            className="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:border-slate-500"
-          >
-            ← 워치리스트
-          </Link>
-          <Link
-            href="/genius"
-            className="rounded-md border border-indigo-500/60 bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-200 hover:bg-indigo-500/20"
-          >
-            거장의 눈 →
-          </Link>
-          <Link
-            href="/trending"
-            className="rounded-md border border-amber-500/60 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200 hover:bg-amber-500/20"
-          >
-            오늘 뜨는 종목 →
-          </Link>
-          <button
-            type="button"
-            onClick={load}
-            disabled={loading}
-            className="rounded-md border border-sky-500 bg-sky-500/20 px-3 py-1.5 text-xs text-sky-200 hover:bg-sky-500/30 disabled:opacity-50"
-          >
-            {loading ? '불러오는 중…' : '새로고침'}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={load}
+          disabled={loading}
+          className="rounded-md border border-sky-500 bg-sky-500/20 px-3 py-1.5 text-xs text-sky-200 hover:bg-sky-500/30 disabled:opacity-50"
+        >
+          {loading ? '불러오는 중…' : '새로고침'}
+        </button>
       </header>
 
       {data ? (

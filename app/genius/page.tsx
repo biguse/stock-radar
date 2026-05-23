@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import rawStocks from '@/data/stocks.sample.json';
 import type { StockRaw, StockScored } from '@/types/stock';
 import { scoreStocks } from '@/lib/scoring';
@@ -151,34 +150,12 @@ export default function GeniusPage() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 md:px-8">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-50">거장의 눈</h1>
-          <p className="mt-2 max-w-3xl text-sm text-slate-400">
-            본인 워치리스트 종목을 <strong>5명의 투자 거장</strong> 관점에서 동시에 평가합니다. 한 명이
-            아니라 여러 관점으로 본다는 점이 핵심. 통과한 거장 수가 많을수록 다각도에서 매수 후보.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/"
-            className="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:border-slate-500"
-          >
-            ← 워치리스트
-          </Link>
-          <Link
-            href="/screener"
-            className="rounded-md border border-emerald-500/60 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-500/20"
-          >
-            스크리너 →
-          </Link>
-          <Link
-            href="/trending"
-            className="rounded-md border border-amber-500/60 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200 hover:bg-amber-500/20"
-          >
-            오늘 뜨는 종목 →
-          </Link>
-        </div>
+      <header className="mb-6">
+        <h1 className="text-3xl font-bold tracking-tight text-slate-50">거장의 눈</h1>
+        <p className="mt-2 max-w-3xl text-sm text-slate-400">
+          본인 워치리스트 또는 거래량/시총 상위 종목을 <strong>5명의 투자 거장</strong> 관점에서
+          동시에 평가합니다. 통과한 거장 수가 많을수록 다각도에서 매수 후보.
+        </p>
       </header>
 
       <div className="mb-4 rounded-lg border border-slate-800 bg-slate-900/40 p-4">

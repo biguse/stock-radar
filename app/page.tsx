@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import rawStocks from '@/data/stocks.sample.json';
 import type { FilterState, SortKey, StockRaw } from '@/types/stock';
 import { scoreStocks } from '@/lib/scoring';
@@ -10,6 +9,7 @@ import { Filters } from '@/components/filters';
 import { SummaryCards } from '@/components/summary-cards';
 import { StockCard } from '@/components/stock-card';
 import { MarketPulseWidget, useMarketPulse } from '@/components/market-pulse';
+import { TodayAlerts } from '@/components/today-alerts';
 import { getFullWatchlist, moveStock, removeFromWatchlist } from '@/lib/watchlist-storage';
 
 const MEMO_PREFIX = 'stock-radar:memo:';
@@ -48,41 +48,22 @@ export default function Page() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 md:px-8">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-50">매수 후보 레이더</h1>
-          <p className="mt-2 max-w-3xl text-sm text-slate-400">
-            지금 살 만한 후보인지, 더 기다릴 종목인지, 아예 피할 종목인지 빠르게 가르는 개인 투자 판단
-            도구입니다.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href="/add"
-            className="rounded-md border border-rose-500/60 bg-rose-500/10 px-3 py-1.5 text-xs text-rose-200 hover:bg-rose-500/20"
-          >
-            + 종목 추가
-          </Link>
-          <Link
-            href="/genius"
-            className="rounded-md border border-indigo-500/60 bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-200 hover:bg-indigo-500/20"
-          >
-            거장의 눈 →
-          </Link>
-          <Link
-            href="/screener"
-            className="rounded-md border border-emerald-500/60 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-500/20"
-          >
-            저평가 우량 스크리너 →
-          </Link>
-          <Link
-            href="/trending"
-            className="rounded-md border border-amber-500/60 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200 hover:bg-amber-500/20"
-          >
-            오늘 뜨는 종목 →
-          </Link>
-        </div>
+      <header className="mb-6">
+        <h1 className="text-3xl font-bold tracking-tight text-slate-50">매수 후보 레이더</h1>
+        <p className="mt-2 max-w-3xl text-sm text-slate-400">
+          지금 살 만한 후보인지, 더 기다릴 종목인지, 아예 피할 종목인지 빠르게 가르는 개인 투자 판단
+          도구입니다.
+        </p>
       </header>
+
+      <section className="mb-6">
+        <TodayAlerts
+          watchlistScored={
+            new Map(allScored.map((s) => [s.code, s] as const))
+          }
+          pulse={pulse}
+        />
+      </section>
 
       <section className="mb-6">
         <MarketPulseWidget />
