@@ -1,12 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import rawStocks from '@/data/stocks.sample.json';
 import type { StockRaw, StockScored } from '@/types/stock';
 import { scoreStocks } from '@/lib/scoring';
 import { runAllLenses, summarize, type LensResult, type LensVerdict } from '@/lib/lenses';
 import { useMarketPulse } from '@/components/market-pulse';
+import { getFullWatchlist } from '@/lib/watchlist-storage';
 
 type StockWithLenses = {
   raw: StockRaw;
@@ -27,11 +28,14 @@ const VERDICT_ORDER: Record<'강한 후보' | '후보' | '애매' | '후보 아�
 export default function GeniusPage() {
   const { data: pulse } = useMarketPulse();
   const [expandedCode, setExpandedCode] = useState<string | null>(null);
+  const [stocks, setStocks] = useState<StockRaw[]>(rawStocks as StockRaw[]);
+  useEffect(() => {
+    setStocks(getFullWatchlist());
+  }, []);
 
   const enriched: StockWithLenses[] = useMemo(() => {
-    const raws = rawStocks as StockRaw[];
-    const scored = scoreStocks(raws);
-    return raws.map((raw, i) => {
+    const scored = scoreStocks(stocks);
+    return stocks.map((raw, i) => {
       const s = scored[i];
       const timing = pulse?.watchlistTiming[raw.code];
       const lenses = runAllLenses(raw, s, timing);
@@ -45,7 +49,7 @@ export default function GeniusPage() {
         overall: summary.overall,
       };
     });
-  }, [pulse]);
+  }, [stocks, pulse]);
 
   const sorted = useMemo(
     () =>

@@ -8,6 +8,7 @@ import type { InvestorFlow, TrendingResult, TrendingStock } from '@/lib/trending
 import type { StockTiming } from '@/lib/market';
 import { scoreStocks } from '@/lib/scoring';
 import { useMarketPulse } from '@/components/market-pulse';
+import { getFullWatchlist } from '@/lib/watchlist-storage';
 
 type ApiResponse = TrendingResult & {
   cached?: boolean;
@@ -17,12 +18,16 @@ type ApiResponse = TrendingResult & {
 };
 
 export default function TrendingPage() {
+  const [watchlistStocks, setWatchlistStocks] = useState<StockRaw[]>(rawStocks as StockRaw[]);
+  useEffect(() => {
+    setWatchlistStocks(getFullWatchlist());
+  }, []);
   const watchlist = useMemo(() => {
-    const scored = scoreStocks(rawStocks as StockRaw[]);
+    const scored = scoreStocks(watchlistStocks);
     const map = new Map<string, StockScored>();
     scored.forEach((s) => map.set(s.code, s));
     return map;
-  }, []);
+  }, [watchlistStocks]);
 
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);

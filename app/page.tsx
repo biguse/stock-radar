@@ -10,11 +10,16 @@ import { Filters } from '@/components/filters';
 import { SummaryCards } from '@/components/summary-cards';
 import { StockCard } from '@/components/stock-card';
 import { MarketPulseWidget, useMarketPulse } from '@/components/market-pulse';
+import { getFullWatchlist } from '@/lib/watchlist-storage';
 
 const MEMO_PREFIX = 'stock-radar:memo:';
 
 export default function Page() {
-  const allScored = useMemo(() => scoreStocks(rawStocks as StockRaw[]), []);
+  const [stocks, setStocks] = useState<StockRaw[]>(rawStocks as StockRaw[]);
+  useEffect(() => {
+    setStocks(getFullWatchlist());
+  }, []);
+  const allScored = useMemo(() => scoreStocks(stocks), [stocks]);
 
   const [filter, setFilter] = useState<FilterState>(DEFAULT_FILTER);
   const [sortKey, setSortKey] = useState<SortKey>('totalScore');
@@ -51,6 +56,12 @@ export default function Page() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link
+            href="/add"
+            className="rounded-md border border-rose-500/60 bg-rose-500/10 px-3 py-1.5 text-xs text-rose-200 hover:bg-rose-500/20"
+          >
+            + 종목 추가
+          </Link>
           <Link
             href="/genius"
             className="rounded-md border border-indigo-500/60 bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-200 hover:bg-indigo-500/20"

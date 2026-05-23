@@ -37,6 +37,26 @@ npm install
 `npm install`이 끝나면 `package-lock.json`이 같이 생깁니다. GitHub Actions가 `npm ci`로
 설치하기 때문에 이 파일은 **반드시 커밋해야 합니다.**
 
+### DART OpenAPI 키 설정 (종목 자동 추가용)
+
+`/add` 페이지에서 종목을 자동 추가하려면 DART API 키가 필요합니다.
+
+1. [https://opendart.fss.or.kr](https://opendart.fss.or.kr) 회원가입
+2. **인증키 신청/관리** → **인증키 신청** → 즉시 발급 (무료, 1일 20,000건)
+3. 발급된 키를 환경변수에 등록:
+
+**로컬 개발 (`.env.local` 파일)**:
+```
+DART_API_KEY=발급받은_40자리_키
+```
+
+**Vercel 프로덕션**:
+- Vercel 대시보드 → 프로젝트 → Settings → Environment Variables
+- Name: `DART_API_KEY`, Value: 발급받은 키
+- 추가 후 Redeploy
+
+키 미설정 시 `/add` 페이지에서 자동 데이터 수집이 실패합니다.
+
 ---
 
 ## 3. 실행 방법

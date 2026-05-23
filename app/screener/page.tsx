@@ -6,6 +6,7 @@ import rawStocks from '@/data/stocks.sample.json';
 import type { StockRaw, StockScored, MarketFilter } from '@/types/stock';
 import type { ScreenerResult, ScreenerStock } from '@/lib/screener';
 import { scoreStocks } from '@/lib/scoring';
+import { getFullWatchlist } from '@/lib/watchlist-storage';
 
 type ApiResponse = ScreenerResult & {
   cached?: boolean;
@@ -15,12 +16,16 @@ type ApiResponse = ScreenerResult & {
 };
 
 export default function ScreenerPage() {
+  const [watchlistStocks, setWatchlistStocks] = useState<StockRaw[]>(rawStocks as StockRaw[]);
+  useEffect(() => {
+    setWatchlistStocks(getFullWatchlist());
+  }, []);
   const watchlist = useMemo(() => {
-    const scored = scoreStocks(rawStocks as StockRaw[]);
+    const scored = scoreStocks(watchlistStocks);
     const map = new Map<string, StockScored>();
     scored.forEach((s) => map.set(s.code, s));
     return map;
-  }, []);
+  }, [watchlistStocks]);
 
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
