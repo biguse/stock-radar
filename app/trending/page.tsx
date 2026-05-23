@@ -8,7 +8,7 @@ import type { InvestorFlow, TrendingResult, TrendingStock } from '@/lib/trending
 import type { StockTiming } from '@/lib/market';
 import { scoreStocks } from '@/lib/scoring';
 import { useMarketPulse } from '@/components/market-pulse';
-import { getFullWatchlist } from '@/lib/watchlist-storage';
+import { addOrUpdateDraft, getFullWatchlist, isInWatchlist } from '@/lib/watchlist-storage';
 
 type ApiResponse = TrendingResult & {
   cached?: boolean;
@@ -19,8 +19,9 @@ type ApiResponse = TrendingResult & {
 
 export default function TrendingPage() {
   const [watchlistStocks, setWatchlistStocks] = useState<StockRaw[]>(rawStocks as StockRaw[]);
+  const refreshWatchlist = () => setWatchlistStocks(getFullWatchlist());
   useEffect(() => {
-    setWatchlistStocks(getFullWatchlist());
+    refreshWatchlist();
   }, []);
   const watchlist = useMemo(() => {
     const scored = scoreStocks(watchlistStocks);
@@ -144,6 +145,7 @@ export default function TrendingPage() {
             stocks={data.volume}
             watchlist={watchlist}
             showTradingValue
+            onAdded={refreshWatchlist}
           />
           <div className="grid gap-4 md:grid-cols-2">
             <InvestorPanel
@@ -152,6 +154,7 @@ export default function TrendingPage() {
               description="외국인이 오늘 가장 많이 산 종목"
               flows={data.foreignBuy}
               watchlist={watchlist}
+              onAdded={refreshWatchlist}
             />
             <InvestorPanel
               title="외국인 순매도 상위"
@@ -159,6 +162,7 @@ export default function TrendingPage() {
               description="외국인이 오늘 가장 많이 판 종목"
               flows={data.foreignSell}
               watchlist={watchlist}
+              onAdded={refreshWatchlist}
             />
             <InvestorPanel
               title="기관 순매수 상위"
@@ -166,6 +170,7 @@ export default function TrendingPage() {
               description="기관(연기금·투신·보험 등)이 오늘 가장 많이 산 종목"
               flows={data.institutionBuy}
               watchlist={watchlist}
+              onAdded={refreshWatchlist}
             />
             <InvestorPanel
               title="기관 순매도 상위"
@@ -173,6 +178,7 @@ export default function TrendingPage() {
               description="기관이 오늘 가장 많이 판 종목"
               flows={data.institutionSell}
               watchlist={watchlist}
+              onAdded={refreshWatchlist}
             />
           </div>
           <Panel
@@ -181,6 +187,7 @@ export default function TrendingPage() {
             description="오늘 등락률 상위"
             stocks={data.gainers}
             watchlist={watchlist}
+            onAdded={refreshWatchlist}
           />
           <Panel
             title="급락 종목"
@@ -188,6 +195,7 @@ export default function TrendingPage() {
             description="오늘 등락률 하위 — 저점 매수 후보 또는 회피 대상"
             stocks={data.losers}
             watchlist={watchlist}
+            onAdded={refreshWatchlist}
           />
         </div>
       ) : loading ? (
@@ -531,6 +539,7 @@ function Panel({
   stocks,
   watchlist,
   showTradingValue,
+  onAdded,
 }: {
   title: string;
   tone: 'sky' | 'emerald' | 'rose';
@@ -538,6 +547,7 @@ function Panel({
   stocks: TrendingStock[];
   watchlist: Map<string, StockScored>;
   showTradingValue?: boolean;
+  onAdded: () => void;
 }) {
   const border =
     tone === 'sky' ? 'border-sky-500/40' : tone === 'emerald' ? 'border-emerald-500/40' : 'border-rose-500/40';
@@ -560,6 +570,7 @@ function Panel({
               stock={s}
               scored={watchlist.get(s.code) ?? null}
               showTradingValue={showTradingValue}
+              onAdded={onAdded}
             />
           ))
         )}
@@ -574,12 +585,14 @@ function InvestorPanel({
   description,
   flows,
   watchlist,
+  onAdded,
 }: {
   title: string;
   tone: 'emerald' | 'rose';
   description: string;
   flows: InvestorFlow[];
   watchlist: Map<string, StockScored>;
+  onAdded: () => void;
 }) {
   const border = tone === 'emerald' ? 'border-emerald-500/40' : 'border-rose-500/40';
   const titleColor = tone === 'emerald' ? 'text-emerald-200' : 'text-rose-200';
@@ -595,7 +608,12 @@ function InvestorPanel({
           <div className="px-4 py-6 text-center text-xs text-slate-500">데이터 없음</div>
         ) : (
           flows.map((f) => (
-            <InvestorRow key={`${f.code}-${f.rank}`} flow={f} scored={watchlist.get(f.code) ?? null} />
+            <InvestorRow
+              key={`${f.code}-${f.rank}`}
+              flow={f}
+              scored={watchlist.get(f.code) ?? null}
+              onAdded={onAdded}
+            />
           ))
         )}
       </div>
@@ -603,79 +621,153 @@ function InvestorPanel({
   );
 }
 
+function AddToWatchlistButton({
+  code,
+  alreadyInWatch,
+  onAdded,
+}: {
+  code: string;
+  alreadyInWatch: boolean;
+  onAdded: () => void;
+}) {
+  const [state, setState] = useState<'idle' | 'fetching' | 'done' | 'error'>(
+    alreadyInWatch ? 'done' : isInWatchlist(code) ? 'done' : 'idle',
+  );
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleClick(e: React.MouseEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    setState('fetching');
+    setErr(null);
+    try {
+      const res = await fetch(`/api/stock-data?code=${code}`, { cache: 'no-store' });
+      const json = (await res.json().catch(() => null)) as
+        | { stock?: StockRaw; warnings?: string[]; error?: string }
+        | null;
+      if (!res.ok || !json || json.error || !json.stock) {
+        setErr(json?.error ?? `HTTP ${res.status}`);
+        setState('error');
+        return;
+      }
+      addOrUpdateDraft(json.stock);
+      setState('done');
+      onAdded();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'unknown');
+      setState('error');
+    }
+  }
+
+  if (state === 'done') {
+    return (
+      <span className="rounded border border-emerald-500/50 bg-emerald-500/10 px-1 text-[10px] text-emerald-300">
+        ✓ 워치
+      </span>
+    );
+  }
+  if (state === 'error') {
+    return (
+      <span className="text-[10px] text-rose-300" title={err ?? 'error'}>
+        실패
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={state === 'fetching'}
+      className="rounded border border-sky-500/60 bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-200 hover:bg-sky-500/20 disabled:opacity-50"
+    >
+      {state === 'fetching' ? '수집…' : '+ 워치'}
+    </button>
+  );
+}
+
 function PriceRow({
   stock,
   scored,
   showTradingValue,
+  onAdded,
 }: {
   stock: TrendingStock;
   scored: StockScored | null;
   showTradingValue?: boolean;
+  onAdded: () => void;
 }) {
   const up = stock.changePct >= 0;
   return (
-    <div className="flex items-center justify-between px-4 py-2.5 text-xs hover:bg-slate-900/30">
-      <div className="flex items-center gap-3">
-        <span className="w-6 text-right text-slate-500">{stock.rank}</span>
-        <div className="flex items-center gap-2">
-          <a
-            href={`https://finance.naver.com/item/main.naver?code=${stock.code}`}
-            target="_blank"
-            rel="noreferrer"
-            className="font-medium text-slate-100 hover:text-sky-300 hover:underline"
-          >
-            {stock.name}
-          </a>
-          <span className="text-[10px] text-slate-500">{stock.code}</span>
-          <span className="text-[10px] text-slate-600">{stock.market}</span>
-          {scored ? (
-            <span className="rounded border border-rose-500/50 bg-rose-500/10 px-1 text-[10px] text-rose-300">
-              워치 · {scored.grade} · {scored.totalScore}
+    <div className="px-4 py-2.5 text-xs hover:bg-slate-900/30">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="w-5 shrink-0 text-right text-slate-500">{stock.rank}</span>
+        <a
+          href={`https://finance.naver.com/item/main.naver?code=${stock.code}`}
+          target="_blank"
+          rel="noreferrer"
+          className="font-medium text-slate-100 hover:text-sky-300 hover:underline"
+        >
+          {stock.name}
+        </a>
+        <span className="text-[10px] text-slate-500">{stock.code}</span>
+        <span className="text-[10px] text-slate-600">{stock.market}</span>
+        {scored ? (
+          <span className="rounded border border-rose-500/50 bg-rose-500/10 px-1 text-[10px] text-rose-300">
+            워치 · {scored.grade} · {scored.totalScore}
+          </span>
+        ) : (
+          <AddToWatchlistButton code={stock.code} alreadyInWatch={false} onAdded={onAdded} />
+        )}
+        <div className="ml-auto flex items-center gap-3 text-right">
+          <span className="text-slate-300">{stock.price.toLocaleString('ko-KR')}원</span>
+          <span className={`font-medium ${up ? 'text-emerald-300' : 'text-rose-300'}`}>
+            {up ? '+' : ''}
+            {stock.changePct.toFixed(2)}%
+          </span>
+          <span className="text-slate-500">{formatVolume(stock.volume)}주</span>
+          {showTradingValue ? (
+            <span className="hidden text-slate-500 md:inline">
+              {stock.tradingValue ? formatValue(stock.tradingValue) : '-'}
             </span>
           ) : null}
         </div>
-      </div>
-      <div className="flex items-center gap-4 text-right">
-        <span className="w-20 text-slate-300">{stock.price.toLocaleString('ko-KR')}원</span>
-        <span className={`w-16 font-medium ${up ? 'text-emerald-300' : 'text-rose-300'}`}>
-          {up ? '+' : ''}
-          {stock.changePct.toFixed(2)}%
-        </span>
-        <span className="w-24 text-slate-500">{formatVolume(stock.volume)}주</span>
-        {showTradingValue ? (
-          <span className="hidden w-24 text-slate-500 md:inline">
-            {stock.tradingValue ? formatValue(stock.tradingValue) : '-'}
-          </span>
-        ) : null}
       </div>
     </div>
   );
 }
 
-function InvestorRow({ flow, scored }: { flow: InvestorFlow; scored: StockScored | null }) {
+function InvestorRow({
+  flow,
+  scored,
+  onAdded,
+}: {
+  flow: InvestorFlow;
+  scored: StockScored | null;
+  onAdded: () => void;
+}) {
   return (
-    <div className="flex items-center justify-between px-4 py-2.5 text-xs hover:bg-slate-900/30">
-      <div className="flex items-center gap-3">
-        <span className="w-6 text-right text-slate-500">{flow.rank}</span>
-        <div className="flex items-center gap-2">
-          <a
-            href={`https://finance.naver.com/item/main.naver?code=${flow.code}`}
-            target="_blank"
-            rel="noreferrer"
-            className="font-medium text-slate-100 hover:text-sky-300 hover:underline"
-          >
-            {flow.name}
-          </a>
-          <span className="text-[10px] text-slate-500">{flow.code}</span>
-          <span className="text-[10px] text-slate-600">{flow.market}</span>
-          {scored ? (
-            <span className="rounded border border-rose-500/50 bg-rose-500/10 px-1 text-[10px] text-rose-300">
-              워치 · {scored.grade}
-            </span>
-          ) : null}
-        </div>
+    <div className="px-4 py-2.5 text-xs hover:bg-slate-900/30">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="w-5 shrink-0 text-right text-slate-500">{flow.rank}</span>
+        <a
+          href={`https://finance.naver.com/item/main.naver?code=${flow.code}`}
+          target="_blank"
+          rel="noreferrer"
+          className="font-medium text-slate-100 hover:text-sky-300 hover:underline"
+        >
+          {flow.name}
+        </a>
+        <span className="text-[10px] text-slate-500">{flow.code}</span>
+        <span className="text-[10px] text-slate-600">{flow.market}</span>
+        {scored ? (
+          <span className="rounded border border-rose-500/50 bg-rose-500/10 px-1 text-[10px] text-rose-300">
+            워치 · {scored.grade}
+          </span>
+        ) : (
+          <AddToWatchlistButton code={flow.code} alreadyInWatch={false} onAdded={onAdded} />
+        )}
+        <span className="ml-auto text-slate-300">{formatAmount(flow.amount)}</span>
       </div>
-      <div className="text-right text-slate-300">{formatAmount(flow.amount)}</div>
     </div>
   );
 }
