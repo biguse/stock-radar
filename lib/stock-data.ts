@@ -42,9 +42,16 @@ function parseItemMain(html: string): NaverItemMain {
     $('div.wrap_company h2').first().text().trim();
 
   let market: Market | null = null;
-  const description = $('.wrap_company .description').first().text();
-  if (description.includes('코스피') || description.includes('KOSPI')) market = 'KOSPI';
-  else if (description.includes('코스닥') || description.includes('KOSDAQ')) market = 'KOSDAQ';
+  // Use the explicit market icon classes — more reliable than text containment
+  // (text may match company history like "2002년 코스닥 상장")
+  if ($('img.kospi').length > 0) market = 'KOSPI';
+  else if ($('img.kosdaq').length > 0) market = 'KOSDAQ';
+  else {
+    // Fallback: look at compact code line "종목코드 035420 코스피"
+    const dd = $('dd').filter((_, el) => /종목코드/.test($(el).text())).first().text();
+    if (dd.includes('코스피')) market = 'KOSPI';
+    else if (dd.includes('코스닥')) market = 'KOSDAQ';
+  }
 
   let industry = '';
   $('a').each((_, a) => {

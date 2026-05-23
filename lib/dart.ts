@@ -105,10 +105,24 @@ type DartAcntItem = {
   bfefrmtrm_amount?: string;
 };
 
-function pickAccount(items: DartAcntItem[], sj: string, names: string[]): DartAcntItem | undefined {
-  return items.find(
-    (it) => it.sj_div === sj && names.some((n) => it.account_nm.includes(n)),
-  );
+function pickAccount(
+  items: DartAcntItem[],
+  sj: string | string[],
+  options: { ids?: string[]; names?: string[] },
+): DartAcntItem | undefined {
+  const sjs = Array.isArray(sj) ? sj : [sj];
+  if (options.ids && options.ids.length > 0) {
+    const byId = items.find(
+      (it) => sjs.includes(it.sj_div) && options.ids!.some((id) => it.account_id === id),
+    );
+    if (byId) return byId;
+  }
+  if (options.names && options.names.length > 0) {
+    return items.find(
+      (it) => sjs.includes(it.sj_div) && options.names!.some((n) => it.account_nm.includes(n)),
+    );
+  }
+  return undefined;
 }
 
 function pickYearValue(item: DartAcntItem | undefined, which: 'thstrm' | 'frmtrm' | 'bfefrmtrm'): number | null {
@@ -119,15 +133,48 @@ function pickYearValue(item: DartAcntItem | undefined, which: 'thstrm' | 'frmtrm
 }
 
 function buildYear(items: DartAcntItem[], which: 'thstrm' | 'frmtrm' | 'bfefrmtrm', yearLabel: string): DartFinancialYear {
-  const revenue = pickYearValue(pickAccount(items, 'IS', ['매출액', '수익(매출액)']), which);
-  const operatingProfit = pickYearValue(pickAccount(items, 'IS', ['영업이익']), which);
-  const netIncome = pickYearValue(pickAccount(items, 'IS', ['당기순이익']), which);
-  const operatingCashFlow = pickYearValue(
-    pickAccount(items, 'CF', ['영업활동현금흐름', '영업활동으로인한현금흐름']),
+  const revenue = pickYearValue(
+    pickAccount(items, ['IS', 'CIS'], {
+      ids: ['ifrs-full_Revenue', 'dart_OperatingRevenue'],
+      names: ['매출액', '수익(매출액)', '영업수익'],
+    }),
     which,
   );
-  const totalDebt = pickYearValue(pickAccount(items, 'BS', ['부채총계']), which);
-  const totalEquity = pickYearValue(pickAccount(items, 'BS', ['자본총계']), which);
+  const operatingProfit = pickYearValue(
+    pickAccount(items, ['IS', 'CIS'], {
+      ids: ['dart_OperatingIncomeLoss', 'ifrs-full_ProfitLossFromOperatingActivities'],
+      names: ['영업이익'],
+    }),
+    which,
+  );
+  const netIncome = pickYearValue(
+    pickAccount(items, ['IS', 'CIS'], {
+      ids: ['ifrs-full_ProfitLoss'],
+      names: ['당기순이익', '분기순이익', '반기순이익', '연결당기순이익'],
+    }),
+    which,
+  );
+  const operatingCashFlow = pickYearValue(
+    pickAccount(items, 'CF', {
+      ids: [
+        'ifrs-full_CashFlowsFromUsedInOperatingActivities',
+        'dart_CashFlowsFromUsedInOperatingActivities',
+      ],
+      names: ['영업활동현금흐름', '영업활동으로인한현금흐름'],
+    }),
+    which,
+  );
+  const totalDebt = pickYearValue(
+    pickAccount(items, 'BS', { ids: ['ifrs-full_Liabilities'], names: ['부채총계'] }),
+    which,
+  );
+  const totalEquity = pickYearValue(
+    pickAccount(items, 'BS', {
+      ids: ['ifrs-full_Equity', 'ifrs-full_EquityAttributableToOwnersOfParent'],
+      names: ['자본총계'],
+    }),
+    which,
+  );
   const debtRatio =
     totalDebt !== null && totalEquity !== null && totalEquity > 0
       ? Math.round((totalDebt / totalEquity) * 1000) / 10
@@ -135,34 +182,57 @@ function buildYear(items: DartAcntItem[], which: 'thstrm' | 'frmtrm' | 'bfefrmtr
   return { year: yearLabel, revenue, operatingProfit, netIncome, operatingCashFlow, totalDebt, totalEquity, debtRatio };
 }
 
-const REPORT_CODES = ['11011', '11014', '11012', '11013']; // 사업, 3Q, 반기, 1Q
+const ANNUAL_REPORT = '11011';
+const QUARTERLY_REPORTS = ['11014', '11012', '11013']; // 3Q, 반기, 1Q
+
+async function tryFetchReport(
+  corpCode: string,
+  bsnsYear: number,
+  reprtCode: string,
+): Promise<DartAcntItem[] | null> {
+  const key = getApiKey();
+  const url = `${DART_BASE}/fnlttSinglAcntAll.json?crtfc_key=${key}&corp_code=${corpCode}&bsns_year=${bsnsYear}&reprt_code=${reprtCode}&fs_div=CFS`;
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) return null;
+  const json = (await res.json().catch(() => null)) as {
+    status?: string;
+    message?: string;
+    list?: DartAcntItem[];
+  } | null;
+  if (!json || json.status !== '000' || !Array.isArray(json.list) || json.list.length === 0) return null;
+  return json.list;
+}
 
 export async function fetchDartFinancials(stockCode: string, year?: number): Promise<DartFinancials | null> {
-  const key = getApiKey();
   const mapped = await getCorpCode(stockCode);
   if (!mapped) return null;
 
   const targetYear = year ?? new Date().getFullYear();
-  // Try the most recent year available, falling back to the previous year.
-  for (const tryYear of [targetYear, targetYear - 1]) {
-    for (const reprt of REPORT_CODES) {
-      const url = `${DART_BASE}/fnlttSinglAcntAll.json?crtfc_key=${key}&corp_code=${mapped.corpCode}&bsns_year=${tryYear}&reprt_code=${reprt}&fs_div=CFS`;
-      const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) continue;
-      const json = (await res.json().catch(() => null)) as {
-        status?: string;
-        message?: string;
-        list?: DartAcntItem[];
-      } | null;
-      if (!json || json.status !== '000' || !Array.isArray(json.list) || json.list.length === 0) continue;
 
-      const items = json.list;
-      const current = buildYear(items, 'thstrm', `${tryYear}-${reprt}`);
-      const previous = buildYear(items, 'frmtrm', `${tryYear - 1}`);
-      const beforePrevious = buildYear(items, 'bfefrmtrm', `${tryYear - 2}`);
-      return { current, previous, beforePrevious };
+  // Prefer most recent ANNUAL report (frmtrm/bfefrmtrm carry prior years for YoY growth)
+  for (const tryYear of [targetYear, targetYear - 1, targetYear - 2]) {
+    const items = await tryFetchReport(mapped.corpCode, tryYear, ANNUAL_REPORT);
+    if (!items) continue;
+    return {
+      current: buildYear(items, 'thstrm', `${tryYear}-annual`),
+      previous: buildYear(items, 'frmtrm', `${tryYear - 1}-annual`),
+      beforePrevious: buildYear(items, 'bfefrmtrm', `${tryYear - 2}-annual`),
+    };
+  }
+
+  // Fallback to quarterly (frmtrm tends to be empty, so growth will be 0)
+  for (const tryYear of [targetYear, targetYear - 1]) {
+    for (const reprt of QUARTERLY_REPORTS) {
+      const items = await tryFetchReport(mapped.corpCode, tryYear, reprt);
+      if (!items) continue;
+      return {
+        current: buildYear(items, 'thstrm', `${tryYear}-${reprt}`),
+        previous: buildYear(items, 'frmtrm', `${tryYear - 1}-${reprt}`),
+        beforePrevious: buildYear(items, 'bfefrmtrm', `${tryYear - 2}-${reprt}`),
+      };
     }
   }
+
   return null;
 }
 
