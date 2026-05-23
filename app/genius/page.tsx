@@ -7,7 +7,13 @@ import type { StockRaw, StockScored } from '@/types/stock';
 import { scoreStocks } from '@/lib/scoring';
 import { runAllLenses, summarize, type LensResult, type LensVerdict } from '@/lib/lenses';
 import { useMarketPulse } from '@/components/market-pulse';
-import { getFullWatchlist, moveStock, removeFromWatchlist } from '@/lib/watchlist-storage';
+import {
+  addOrUpdateDraft,
+  getFullWatchlist,
+  isInWatchlist,
+  moveStock,
+  removeFromWatchlist,
+} from '@/lib/watchlist-storage';
 
 type StockWithLenses = {
   raw: StockRaw;
@@ -26,6 +32,16 @@ const VERDICT_ORDER: Record<'강한 후보' | '후보' | '애매' | '후보 아�
 };
 
 type GeniusSortMode = 'verdict' | 'custom';
+type ScanSource = 'watchlist' | 'volume' | 'cap' | 'gainers' | 'foreign-buy' | 'magic';
+
+const SCAN_LABELS: Record<ScanSource, string> = {
+  watchlist: '내 워치리스트',
+  volume: '거래량 Top',
+  cap: '시총 Top',
+  gainers: '급등 Top',
+  'foreign-buy': '외국인 매수 Top',
+  magic: '마법공식 Top',
+};
 
 export default function GeniusPage() {
   const { data: pulse } = useMarketPulse();
@@ -33,13 +49,79 @@ export default function GeniusPage() {
   const [stocks, setStocks] = useState<StockRaw[]>(rawStocks as StockRaw[]);
   const [sortMode, setSortMode] = useState<GeniusSortMode>('verdict');
   const refreshStocks = () => setStocks(getFullWatchlist());
+
+  // Scan mode state
+  const [scanSource, setScanSource] = useState<ScanSource>('watchlist');
+  const [scanLimit, setScanLimit] = useState<number>(20);
+  const [scanData, setScanData] = useState<StockRaw[] | null>(null);
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [scanProgress, setScanProgress] = useState<string | null>(null);
+
   useEffect(() => {
     refreshStocks();
   }, []);
 
+  async function runScan(source: ScanSource, limit: number) {
+    setScanSource(source);
+    if (source === 'watchlist') {
+      setScanData(null);
+      setScanError(null);
+      setScanProgress(null);
+      return;
+    }
+    setScanLoading(true);
+    setScanError(null);
+    setScanData(null);
+    setScanProgress('상위 종목 목록 가져오는 중…');
+    try {
+      let codes: string[] = [];
+      if (source === 'cap' || source === 'magic') {
+        const res = await fetch('/api/screener', { cache: 'no-store' });
+        const json = (await res.json()) as { top?: { code: string }[]; error?: string };
+        if (json.error) throw new Error(json.error);
+        codes = (json.top ?? []).slice(0, limit).map((s) => s.code);
+      } else {
+        const res = await fetch('/api/trending', { cache: 'no-store' });
+        const json = (await res.json()) as {
+          volume?: { code: string }[];
+          gainers?: { code: string }[];
+          foreignBuy?: { code: string }[];
+          error?: string;
+        };
+        if (json.error) throw new Error(json.error);
+        if (source === 'volume') codes = (json.volume ?? []).slice(0, limit).map((s) => s.code);
+        else if (source === 'gainers') codes = (json.gainers ?? []).slice(0, limit).map((s) => s.code);
+        else if (source === 'foreign-buy') codes = (json.foreignBuy ?? []).slice(0, limit).map((s) => s.code);
+      }
+      if (codes.length === 0) throw new Error('해당 출처에서 종목을 못 가져왔습니다');
+
+      const eta = Math.ceil(codes.length / 4) * 3;
+      setScanProgress(`${codes.length}개 종목 재무·DART 데이터 수집 중… (${eta}초 정도 소요)`);
+      const res2 = await fetch(`/api/universe?codes=${codes.join(',')}`, { cache: 'no-store' });
+      const json2 = (await res2.json()) as {
+        results?: Array<{ code: string; ok: boolean; stock?: StockRaw; error?: string }>;
+        error?: string;
+      };
+      if (json2.error) throw new Error(json2.error);
+      const okStocks = (json2.results ?? [])
+        .filter((r): r is { code: string; ok: true; stock: StockRaw } => r.ok && r.stock !== undefined)
+        .map((r) => r.stock);
+      setScanData(okStocks);
+      setScanProgress(`${okStocks.length}/${codes.length}개 완료${okStocks.length < codes.length ? ' (일부 실패)' : ''}`);
+    } catch (e) {
+      setScanError(e instanceof Error ? e.message : 'unknown error');
+      setScanProgress(null);
+    } finally {
+      setScanLoading(false);
+    }
+  }
+
+  const stocksForLenses: StockRaw[] = scanSource === 'watchlist' ? stocks : scanData ?? [];
+
   const enriched: StockWithLenses[] = useMemo(() => {
-    const scored = scoreStocks(stocks);
-    return stocks.map((raw, i) => {
+    const scored = scoreStocks(stocksForLenses);
+    return stocksForLenses.map((raw, i) => {
       const s = scored[i];
       const timing = pulse?.watchlistTiming[raw.code];
       const lenses = runAllLenses(raw, s, timing);
@@ -53,17 +135,19 @@ export default function GeniusPage() {
         overall: summary.overall,
       };
     });
-  }, [stocks, pulse]);
+  }, [stocksForLenses, pulse]);
 
   const sorted = useMemo(() => {
-    if (sortMode === 'custom') return enriched;
+    if (sortMode === 'custom' && scanSource === 'watchlist') return enriched;
     return [...enriched].sort((a, b) => {
       const dv = VERDICT_ORDER[a.overall] - VERDICT_ORDER[b.overall];
       if (dv !== 0) return dv;
       if (b.passCount !== a.passCount) return b.passCount - a.passCount;
       return b.scored.totalScore - a.scored.totalScore;
     });
-  }, [enriched, sortMode]);
+  }, [enriched, sortMode, scanSource]);
+
+  const isWatchlistMode = scanSource === 'watchlist';
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 md:px-8">
@@ -119,12 +203,63 @@ export default function GeniusPage() {
         </ul>
       </div>
 
+      <div className="mb-4 rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+        <div className="text-xs font-semibold text-slate-300">분석 대상</div>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+          {(Object.keys(SCAN_LABELS) as ScanSource[]).map((src) => (
+            <button
+              key={src}
+              type="button"
+              onClick={() => runScan(src, scanLimit)}
+              disabled={scanLoading}
+              className={`rounded-md border px-3 py-1 transition disabled:opacity-50 ${
+                scanSource === src
+                  ? 'border-indigo-400 bg-indigo-500/20 text-indigo-200'
+                  : 'border-slate-700 bg-slate-800/40 text-slate-300 hover:border-slate-500'
+              }`}
+            >
+              {SCAN_LABELS[src]}
+            </button>
+          ))}
+        </div>
+        {!isWatchlistMode ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-slate-400">개수</span>
+            {[10, 20, 30].map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => runScan(scanSource, n)}
+                disabled={scanLoading}
+                className={`rounded-md border px-3 py-1 transition disabled:opacity-50 ${
+                  scanLimit === n
+                    ? 'border-sky-400 bg-sky-500/20 text-sky-200'
+                    : 'border-slate-700 bg-slate-800/40 text-slate-300 hover:border-slate-500'
+                }`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {scanProgress ? (
+          <div className="mt-2 rounded border border-sky-500/30 bg-sky-500/5 px-2 py-1 text-[11px] text-sky-200">
+            {scanProgress}
+          </div>
+        ) : null}
+        {scanError ? (
+          <div className="mt-2 rounded border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+            실패: {scanError}
+          </div>
+        ) : null}
+      </div>
+
       <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
         <span className="text-slate-400">정렬</span>
         {(
           [
             { key: 'verdict' as const, label: '거장 평가 순' },
-            { key: 'custom' as const, label: '내 순서 (편집 가능)' },
+            { key: 'custom' as const, label: '내 순서 (편집 가능, 워치리스트만)' },
           ]
         ).map((opt) => (
           <button
@@ -144,30 +279,45 @@ export default function GeniusPage() {
 
       <section className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900/40">
         <div className="divide-y divide-slate-800/60">
-          {sorted.map((row, idx) => (
-            <StockLensRow
-              key={row.raw.code}
-              row={row}
-              expanded={expandedCode === row.raw.code}
-              onToggle={() => setExpandedCode(expandedCode === row.raw.code ? null : row.raw.code)}
-              onRemove={() => {
-                if (confirm(`${row.raw.name} (${row.raw.code})을(를) 워치리스트에서 제거할까요?`)) {
-                  removeFromWatchlist(row.raw.code);
-                  refreshStocks();
-                }
-              }}
-              onMoveUp={sortMode === 'custom' ? () => {
-                moveStock(row.raw.code, 'up');
-                refreshStocks();
-              } : undefined}
-              onMoveDown={sortMode === 'custom' ? () => {
-                moveStock(row.raw.code, 'down');
-                refreshStocks();
-              } : undefined}
-              canMoveUp={idx > 0}
-              canMoveDown={idx < sorted.length - 1}
-            />
-          ))}
+          {sorted.length === 0 ? (
+            <div className="px-4 py-6 text-center text-xs text-slate-500">
+              {scanLoading ? '데이터 수집 중…' : isWatchlistMode ? '워치리스트가 비어있습니다' : '결과 없음'}
+            </div>
+          ) : (
+            sorted.map((row, idx) => {
+              const inWatch = isInWatchlist(row.raw.code);
+              return (
+                <StockLensRow
+                  key={row.raw.code}
+                  row={row}
+                  expanded={expandedCode === row.raw.code}
+                  onToggle={() => setExpandedCode(expandedCode === row.raw.code ? null : row.raw.code)}
+                  onRemove={isWatchlistMode ? () => {
+                    if (confirm(`${row.raw.name} (${row.raw.code})을(를) 워치리스트에서 제거할까요?`)) {
+                      removeFromWatchlist(row.raw.code);
+                      refreshStocks();
+                    }
+                  } : undefined}
+                  onMoveUp={isWatchlistMode && sortMode === 'custom' ? () => {
+                    moveStock(row.raw.code, 'up');
+                    refreshStocks();
+                  } : undefined}
+                  onMoveDown={isWatchlistMode && sortMode === 'custom' ? () => {
+                    moveStock(row.raw.code, 'down');
+                    refreshStocks();
+                  } : undefined}
+                  canMoveUp={idx > 0}
+                  canMoveDown={idx < sorted.length - 1}
+                  showAddButton={!isWatchlistMode && !inWatch}
+                  inWatchlist={inWatch}
+                  onAdd={() => {
+                    addOrUpdateDraft(row.raw);
+                    refreshStocks();
+                  }}
+                />
+              );
+            })
+          )}
         </div>
       </section>
 
@@ -197,6 +347,9 @@ function StockLensRow({
   onMoveDown,
   canMoveUp,
   canMoveDown,
+  showAddButton,
+  inWatchlist,
+  onAdd,
 }: {
   row: StockWithLenses;
   expanded: boolean;
@@ -206,43 +359,64 @@ function StockLensRow({
   onMoveDown?: () => void;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
+  showAddButton?: boolean;
+  inWatchlist?: boolean;
+  onAdd?: () => void;
 }) {
+  const showControls = onRemove || onMoveUp || onMoveDown || showAddButton || inWatchlist;
   return (
     <div>
-      <div className="flex items-center gap-1 border-b border-transparent px-4 pt-2 text-[10px]">
-        {onMoveUp ? (
-          <button
-            type="button"
-            onClick={onMoveUp}
-            disabled={!canMoveUp}
-            title="위로"
-            className="rounded border border-slate-700 px-1.5 py-0.5 text-slate-300 hover:border-slate-500 disabled:opacity-30"
-          >
-            ↑
-          </button>
-        ) : null}
-        {onMoveDown ? (
-          <button
-            type="button"
-            onClick={onMoveDown}
-            disabled={!canMoveDown}
-            title="아래로"
-            className="rounded border border-slate-700 px-1.5 py-0.5 text-slate-300 hover:border-slate-500 disabled:opacity-30"
-          >
-            ↓
-          </button>
-        ) : null}
-        {onRemove ? (
-          <button
-            type="button"
-            onClick={onRemove}
-            title="워치리스트에서 제거"
-            className="ml-auto rounded border border-slate-700 px-1.5 py-0.5 text-slate-400 hover:border-rose-500 hover:text-rose-300"
-          >
-            × 제거
-          </button>
-        ) : null}
-      </div>
+      {showControls ? (
+        <div className="flex items-center gap-1 border-b border-transparent px-4 pt-2 text-[10px]">
+          {onMoveUp ? (
+            <button
+              type="button"
+              onClick={onMoveUp}
+              disabled={!canMoveUp}
+              title="위로"
+              className="rounded border border-slate-700 px-1.5 py-0.5 text-slate-300 hover:border-slate-500 disabled:opacity-30"
+            >
+              ↑
+            </button>
+          ) : null}
+          {onMoveDown ? (
+            <button
+              type="button"
+              onClick={onMoveDown}
+              disabled={!canMoveDown}
+              title="아래로"
+              className="rounded border border-slate-700 px-1.5 py-0.5 text-slate-300 hover:border-slate-500 disabled:opacity-30"
+            >
+              ↓
+            </button>
+          ) : null}
+          {inWatchlist && !onRemove ? (
+            <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-300">
+              ✓ 워치리스트
+            </span>
+          ) : null}
+          {showAddButton && onAdd ? (
+            <button
+              type="button"
+              onClick={onAdd}
+              title="워치리스트에 추가"
+              className="rounded border border-sky-500/60 bg-sky-500/10 px-1.5 py-0.5 text-sky-200 hover:bg-sky-500/20"
+            >
+              + 워치리스트
+            </button>
+          ) : null}
+          {onRemove ? (
+            <button
+              type="button"
+              onClick={onRemove}
+              title="워치리스트에서 제거"
+              className="ml-auto rounded border border-slate-700 px-1.5 py-0.5 text-slate-400 hover:border-rose-500 hover:text-rose-300"
+            >
+              × 제거
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <button
         type="button"
         onClick={onToggle}
