@@ -10,14 +10,15 @@ import { Filters } from '@/components/filters';
 import { SummaryCards } from '@/components/summary-cards';
 import { StockCard } from '@/components/stock-card';
 import { MarketPulseWidget, useMarketPulse } from '@/components/market-pulse';
-import { getFullWatchlist } from '@/lib/watchlist-storage';
+import { getFullWatchlist, moveStock, removeFromWatchlist } from '@/lib/watchlist-storage';
 
 const MEMO_PREFIX = 'stock-radar:memo:';
 
 export default function Page() {
   const [stocks, setStocks] = useState<StockRaw[]>(rawStocks as StockRaw[]);
+  const refreshStocks = () => setStocks(getFullWatchlist());
   useEffect(() => {
-    setStocks(getFullWatchlist());
+    refreshStocks();
   }, []);
   const allScored = useMemo(() => scoreStocks(stocks), [stocks]);
 
@@ -112,12 +113,28 @@ export default function Page() {
             조건에 맞는 종목이 없습니다. 필터를 조정해 보세요.
           </div>
         ) : (
-          visible.map((stock) => (
+          visible.map((stock, idx) => (
             <StockCard
               key={stock.code}
               stock={stock}
               initialHasMemo={memoCodes.has(stock.code)}
               timing={pulse?.watchlistTiming[stock.code]}
+              onRemove={() => {
+                if (confirm(`${stock.name} (${stock.code})을(를) 워치리스트에서 제거할까요?`)) {
+                  removeFromWatchlist(stock.code);
+                  refreshStocks();
+                }
+              }}
+              onMoveUp={sortKey === 'custom' ? () => {
+                moveStock(stock.code, 'up');
+                refreshStocks();
+              } : undefined}
+              onMoveDown={sortKey === 'custom' ? () => {
+                moveStock(stock.code, 'down');
+                refreshStocks();
+              } : undefined}
+              canMoveUp={idx > 0}
+              canMoveDown={idx < visible.length - 1}
             />
           ))
         )}

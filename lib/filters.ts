@@ -12,6 +12,7 @@ export const DEFAULT_FILTER: FilterState = {
 };
 
 export const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: 'custom', label: '내 순서 (편집 가능)' },
   { key: 'totalScore', label: '종합점수 높은 순' },
   { key: 'growth', label: '성장성 높은 순' },
   { key: 'profitability', label: '수익성 높은 순' },
@@ -37,6 +38,10 @@ export function applyFilters(stocks: StockScored[], filter: FilterState): StockS
 }
 
 export function applySort(stocks: StockScored[], sortKey: SortKey): StockScored[] {
+  if (sortKey === 'custom') {
+    // Caller supplies stocks in user-defined order from watchlist-storage
+    return [...stocks];
+  }
   const sorted = [...stocks];
   if (sortKey === 'totalScore') {
     sorted.sort((a, b) => b.totalScore - a.totalScore);

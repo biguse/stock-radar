@@ -7,7 +7,7 @@ import type { StockRaw, StockScored } from '@/types/stock';
 import { scoreStocks } from '@/lib/scoring';
 import { runAllLenses, summarize, type LensResult, type LensVerdict } from '@/lib/lenses';
 import { useMarketPulse } from '@/components/market-pulse';
-import { getFullWatchlist } from '@/lib/watchlist-storage';
+import { getFullWatchlist, moveStock, removeFromWatchlist } from '@/lib/watchlist-storage';
 
 type StockWithLenses = {
   raw: StockRaw;
@@ -25,12 +25,16 @@ const VERDICT_ORDER: Record<'강한 후보' | '후보' | '애매' | '후보 아�
   '후보 아님': 3,
 };
 
+type GeniusSortMode = 'verdict' | 'custom';
+
 export default function GeniusPage() {
   const { data: pulse } = useMarketPulse();
   const [expandedCode, setExpandedCode] = useState<string | null>(null);
   const [stocks, setStocks] = useState<StockRaw[]>(rawStocks as StockRaw[]);
+  const [sortMode, setSortMode] = useState<GeniusSortMode>('verdict');
+  const refreshStocks = () => setStocks(getFullWatchlist());
   useEffect(() => {
-    setStocks(getFullWatchlist());
+    refreshStocks();
   }, []);
 
   const enriched: StockWithLenses[] = useMemo(() => {
@@ -51,16 +55,15 @@ export default function GeniusPage() {
     });
   }, [stocks, pulse]);
 
-  const sorted = useMemo(
-    () =>
-      [...enriched].sort((a, b) => {
-        const dv = VERDICT_ORDER[a.overall] - VERDICT_ORDER[b.overall];
-        if (dv !== 0) return dv;
-        if (b.passCount !== a.passCount) return b.passCount - a.passCount;
-        return b.scored.totalScore - a.scored.totalScore;
-      }),
-    [enriched],
-  );
+  const sorted = useMemo(() => {
+    if (sortMode === 'custom') return enriched;
+    return [...enriched].sort((a, b) => {
+      const dv = VERDICT_ORDER[a.overall] - VERDICT_ORDER[b.overall];
+      if (dv !== 0) return dv;
+      if (b.passCount !== a.passCount) return b.passCount - a.passCount;
+      return b.scored.totalScore - a.scored.totalScore;
+    });
+  }, [enriched, sortMode]);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 md:px-8">
@@ -116,14 +119,53 @@ export default function GeniusPage() {
         </ul>
       </div>
 
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-slate-400">정렬</span>
+        {(
+          [
+            { key: 'verdict' as const, label: '거장 평가 순' },
+            { key: 'custom' as const, label: '내 순서 (편집 가능)' },
+          ]
+        ).map((opt) => (
+          <button
+            key={opt.key}
+            type="button"
+            onClick={() => setSortMode(opt.key)}
+            className={`rounded-md border px-3 py-1 transition ${
+              sortMode === opt.key
+                ? 'border-sky-400 bg-sky-500/20 text-sky-200'
+                : 'border-slate-700 bg-slate-800/40 text-slate-300 hover:border-slate-500'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
       <section className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900/40">
         <div className="divide-y divide-slate-800/60">
-          {sorted.map((row) => (
+          {sorted.map((row, idx) => (
             <StockLensRow
               key={row.raw.code}
               row={row}
               expanded={expandedCode === row.raw.code}
               onToggle={() => setExpandedCode(expandedCode === row.raw.code ? null : row.raw.code)}
+              onRemove={() => {
+                if (confirm(`${row.raw.name} (${row.raw.code})을(를) 워치리스트에서 제거할까요?`)) {
+                  removeFromWatchlist(row.raw.code);
+                  refreshStocks();
+                }
+              }}
+              onMoveUp={sortMode === 'custom' ? () => {
+                moveStock(row.raw.code, 'up');
+                refreshStocks();
+              } : undefined}
+              onMoveDown={sortMode === 'custom' ? () => {
+                moveStock(row.raw.code, 'down');
+                refreshStocks();
+              } : undefined}
+              canMoveUp={idx > 0}
+              canMoveDown={idx < sorted.length - 1}
             />
           ))}
         </div>
@@ -150,13 +192,57 @@ function StockLensRow({
   row,
   expanded,
   onToggle,
+  onRemove,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
 }: {
   row: StockWithLenses;
   expanded: boolean;
   onToggle: () => void;
+  onRemove?: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
 }) {
   return (
     <div>
+      <div className="flex items-center gap-1 border-b border-transparent px-4 pt-2 text-[10px]">
+        {onMoveUp ? (
+          <button
+            type="button"
+            onClick={onMoveUp}
+            disabled={!canMoveUp}
+            title="위로"
+            className="rounded border border-slate-700 px-1.5 py-0.5 text-slate-300 hover:border-slate-500 disabled:opacity-30"
+          >
+            ↑
+          </button>
+        ) : null}
+        {onMoveDown ? (
+          <button
+            type="button"
+            onClick={onMoveDown}
+            disabled={!canMoveDown}
+            title="아래로"
+            className="rounded border border-slate-700 px-1.5 py-0.5 text-slate-300 hover:border-slate-500 disabled:opacity-30"
+          >
+            ↓
+          </button>
+        ) : null}
+        {onRemove ? (
+          <button
+            type="button"
+            onClick={onRemove}
+            title="워치리스트에서 제거"
+            className="ml-auto rounded border border-slate-700 px-1.5 py-0.5 text-slate-400 hover:border-rose-500 hover:text-rose-300"
+          >
+            × 제거
+          </button>
+        ) : null}
+      </div>
       <button
         type="button"
         onClick={onToggle}

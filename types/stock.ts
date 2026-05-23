@@ -63,6 +63,7 @@ export type FilterState = {
 };
 
 export type SortKey =
+  | 'custom'
   | 'totalScore'
   | 'growth'
   | 'profitability'

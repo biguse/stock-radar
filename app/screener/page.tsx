@@ -6,7 +6,7 @@ import rawStocks from '@/data/stocks.sample.json';
 import type { StockRaw, StockScored, MarketFilter } from '@/types/stock';
 import type { ScreenerResult, ScreenerStock } from '@/lib/screener';
 import { scoreStocks } from '@/lib/scoring';
-import { getFullWatchlist } from '@/lib/watchlist-storage';
+import { addOrUpdateDraft, getFullWatchlist, isInWatchlist } from '@/lib/watchlist-storage';
 
 type ApiResponse = ScreenerResult & {
   cached?: boolean;
@@ -17,8 +17,9 @@ type ApiResponse = ScreenerResult & {
 
 export default function ScreenerPage() {
   const [watchlistStocks, setWatchlistStocks] = useState<StockRaw[]>(rawStocks as StockRaw[]);
+  const refreshWatchlist = () => setWatchlistStocks(getFullWatchlist());
   useEffect(() => {
-    setWatchlistStocks(getFullWatchlist());
+    refreshWatchlist();
   }, []);
   const watchlist = useMemo(() => {
     const scored = scoreStocks(watchlistStocks);
@@ -185,7 +186,12 @@ export default function ScreenerPage() {
               </div>
             ) : (
               visible.map((stock) => (
-                <ScreenerRow key={stock.code} stock={stock} scored={watchlist.get(stock.code) ?? null} />
+                <ScreenerRow
+                  key={stock.code}
+                  stock={stock}
+                  scored={watchlist.get(stock.code) ?? null}
+                  onAdded={refreshWatchlist}
+                />
               ))
             )}
           </div>
@@ -210,8 +216,45 @@ export default function ScreenerPage() {
   );
 }
 
-function ScreenerRow({ stock, scored }: { stock: ScreenerStock; scored: StockScored | null }) {
+function ScreenerRow({
+  stock,
+  scored,
+  onAdded,
+}: {
+  stock: ScreenerStock;
+  scored: StockScored | null;
+  onAdded: () => void;
+}) {
   const up = stock.changePct >= 0;
+  const inWatch = scored !== null || isInWatchlist(stock.code);
+  const [addState, setAddState] = useState<'idle' | 'fetching' | 'done' | 'error'>(
+    inWatch ? 'done' : 'idle',
+  );
+  const [errMsg, setErrMsg] = useState<string | null>(null);
+
+  async function handleAdd(e: React.MouseEvent) {
+    e.stopPropagation();
+    setAddState('fetching');
+    setErrMsg(null);
+    try {
+      const res = await fetch(`/api/stock-data?code=${stock.code}`, { cache: 'no-store' });
+      const json = (await res.json().catch(() => null)) as
+        | { stock?: StockRaw; warnings?: string[]; error?: string }
+        | null;
+      if (!res.ok || !json || json.error || !json.stock) {
+        setErrMsg(json?.error ?? `HTTP ${res.status}`);
+        setAddState('error');
+        return;
+      }
+      addOrUpdateDraft(json.stock);
+      setAddState('done');
+      onAdded();
+    } catch (e) {
+      setErrMsg(e instanceof Error ? e.message : 'unknown');
+      setAddState('error');
+    }
+  }
+
   return (
     <div className="grid grid-cols-2 gap-2 px-4 py-2.5 text-xs hover:bg-slate-900/30 md:grid-cols-12 md:items-center">
       <div className="col-span-2 flex items-center gap-2 md:col-span-1">
@@ -234,6 +277,24 @@ function ScreenerRow({ stock, scored }: { stock: ScreenerStock; scored: StockSco
           {scored ? (
             <span className="rounded border border-rose-500/50 bg-rose-500/10 px-1 text-[10px] text-rose-300">
               워치 · {scored.grade} · {scored.totalScore}
+            </span>
+          ) : addState === 'done' ? (
+            <span className="rounded border border-emerald-500/50 bg-emerald-500/10 px-1 text-[10px] text-emerald-300">
+              ✓ 추가됨
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={handleAdd}
+              disabled={addState === 'fetching'}
+              className="rounded border border-sky-500/60 bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-200 hover:bg-sky-500/20 disabled:opacity-50"
+            >
+              {addState === 'fetching' ? '수집 중…' : '+ 워치리스트'}
+            </button>
+          )}
+          {addState === 'error' && errMsg ? (
+            <span className="text-[10px] text-rose-300" title={errMsg}>
+              실패
             </span>
           ) : null}
         </div>

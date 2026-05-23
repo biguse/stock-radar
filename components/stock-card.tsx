@@ -10,6 +10,11 @@ type Props = {
   stock: StockScored;
   initialHasMemo: boolean;
   timing?: StockTiming;
+  onRemove?: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
 };
 
 const GRADE_STYLE: Record<Grade, string> = {
@@ -28,7 +33,16 @@ const ACTION_STYLE: Record<ActionSuggestion, string> = {
   피함: 'bg-rose-500/10 text-rose-300 border-rose-500/40',
 };
 
-export function StockCard({ stock, initialHasMemo, timing }: Props) {
+export function StockCard({
+  stock,
+  initialHasMemo,
+  timing,
+  onRemove,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp = true,
+  canMoveDown = true,
+}: Props) {
   const [hasMemo, setHasMemo] = useState(initialHasMemo);
 
   return (
@@ -44,6 +58,38 @@ export function StockCard({ stock, initialHasMemo, timing }: Props) {
               </span>
             ) : null}
             <TimingBadge timing={timing} />
+            {onMoveUp ? (
+              <button
+                type="button"
+                onClick={onMoveUp}
+                disabled={!canMoveUp}
+                title="위로 이동"
+                className="rounded border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-300 hover:border-slate-500 disabled:opacity-30"
+              >
+                ↑
+              </button>
+            ) : null}
+            {onMoveDown ? (
+              <button
+                type="button"
+                onClick={onMoveDown}
+                disabled={!canMoveDown}
+                title="아래로 이동"
+                className="rounded border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-300 hover:border-slate-500 disabled:opacity-30"
+              >
+                ↓
+              </button>
+            ) : null}
+            {onRemove ? (
+              <button
+                type="button"
+                onClick={onRemove}
+                title="워치리스트에서 제거"
+                className="rounded border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400 hover:border-rose-500 hover:text-rose-300"
+              >
+                ×
+              </button>
+            ) : null}
           </div>
           <div className="mt-1 text-xs text-slate-400">
             {stock.market} · {stock.industry}
