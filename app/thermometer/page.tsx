@@ -227,9 +227,13 @@ function headlineTwist(bucket: Bucket, ci?: BucketCI): { main: string; sub: stri
   }
   const wide = !ci.signCertain || ci.negHigh - ci.negLow > 40;
   if (wide) {
+    // 결론("데이터가 답하지 못한다")을 헤드라인에 올리면 근거를 아직 보지 않은
+    // 독자에게는 그냥 겸양으로 읽힌다. 누구나 하는 말이라 뻔하다.
+    // 그래서 결론 대신 그 결론을 만든 숫자를 보여준다 — 같은 자리에서
+    // 1년 뒤가 얼마나 갈렸는지. 판단은 독자가 한다.
     return {
-      main: '그런데 그 자리가 무엇을 뜻하는지는\n데이터가 답하지 못합니다',
-      sub: `과거 같은 구간의 1년 뒤 손실 확률은 ${neg.toFixed(0)}%로 계산되지만, 표본이 겹쳐 있어 실제로는 ${ci.negLow.toFixed(0)}~${ci.negHigh.toFixed(0)}% 사이 어디든 될 수 있습니다`,
+      main: `과거 같은 자리에서 1년 뒤는\n${bucket.min.toFixed(0)}%와 +${bucket.max.toFixed(0)}% 사이로 갈렸습니다`,
+      sub: `손실로 끝난 경우는 ${neg.toFixed(0)}%. 다만 표본이 겹쳐 있어 이 ${neg.toFixed(0)}%조차 ${ci.negLow.toFixed(0)}~${ci.negHigh.toFixed(0)}% 사이 어디든 될 수 있습니다`,
     };
   }
   const spread = `${bucket.min.toFixed(0)}%부터 +${bucket.max.toFixed(0)}%까지 갈렸습니다`;
