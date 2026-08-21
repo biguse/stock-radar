@@ -1,0 +1,43 @@
+name: price-lineage
+
+# 가격 데이터 계보 검증 — 네이버 수집본이 KRX 공식값과 같은지 대조한다.
+# KRX에 37회 요청하므로 매일이 아니라 주 1회 + 수동 실행으로 돌린다.
+on:
+  schedule:
+    - cron: '0 15 * * 0'   # 일요일 00:00 KST
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  lineage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --quiet pykrx
+
+      - name: Compare against KRX official
+        env:
+          KRX_ID: ${{ secrets.KRX_ID }}
+          KRX_PW: ${{ secrets.KRX_PW }}
+        run: |
+          {
+            echo '## 가격 계보 검증 — 네이버 ↔ KRX 공식'
+            echo '```'
+            python scripts/verify-price-lineage.py 1990
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit result
+        if: always()
+        run: |
+          git diff --quiet -- data/price-lineage.json && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/price-lineage.json
+          git commit -m "chore: 가격 계보 대조 결과 $(date -u +%Y-%m-%d)"
+          git push
