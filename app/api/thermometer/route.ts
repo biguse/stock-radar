@@ -40,6 +40,34 @@ async function fredLatest(id: string, sinceDays = 120): Promise<{ d: string; v: 
   return null;
 }
 
+/**
+ * 오늘의 원/달러 — 네이버 실시간.
+ * FRED DEXKOUS는 미국 연준 H.10 기준이라 최대 일주일 늦게 갱신된다.
+ * 역사 시계열은 FRED(1981~)를 쓰되, 오늘 값만 네이버에서 가져온다.
+ * (매매기준율 vs 뉴욕 정오환율 차이는 0.1% 수준으로 백분위 산출에 영향 없음)
+ */
+async function latestUsdKrwFromNaver(): Promise<{ d: string; v: number } | null> {
+  try {
+    const res = await fetch('https://finance.naver.com/marketindex/', {
+      headers: { 'User-Agent': UA },
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    const iconv = (await import('iconv-lite')).default;
+    const html = iconv.decode(buf, 'EUC-KR');
+    const anchor = html.indexOf('미국 USD');
+    if (anchor < 0) return null;
+    const m = html.slice(anchor).match(/<span class="value">([\d,.]+)<\/span>/);
+    if (!m) return null;
+    const v = Number(m[1].replace(/,/g, ''));
+    if (!Number.isFinite(v) || v <= 0) return null;
+    return { d: new Date().toISOString().slice(0, 10), v };
+  } catch {
+    return null;
+  }
+}
+
 async function latestKospi(): Promise<{ d: string; v: number } | null> {
   const res = await fetch('https://finance.naver.com/sise/sise_index_day.naver?code=KOSPI&page=1', {
     headers: { 'User-Agent': UA },
@@ -68,12 +96,14 @@ async function build() {
   let current = series[series.length - 1] ?? null;
   let live = false;
   try {
-    const [k, vix, fx, y10] = await Promise.all([
+    const [k, vix, fxNaver, fxFred, y10] = await Promise.all([
       latestKospi(),
       fredLatest('VIXCLS'),
+      latestUsdKrwFromNaver(),
       fredLatest('DEXKOUS'),
       fredLatest('DGS10'),
     ]);
+    const fx = fxNaver ?? fxFred;
     if (k && vix && fx && y10) {
       const lastRow = rows[rows.length - 1];
       if (k.d >= lastRow.d) {
