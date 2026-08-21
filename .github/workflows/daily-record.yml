@@ -48,6 +48,10 @@ jobs:
       - name: Append market row and merge valuation
         run: node scripts/record-daily.mjs
 
+      # 데이터가 하루치 늘면 구간 통계도 다시 계산한다 (10,000회 × 블록 3종, 약 40초)
+      - name: Rebuild bootstrap intervals
+        run: node scripts/build-bootstrap.mjs
+
       - name: Commit if changed
         run: |
           if git diff --quiet -- data/; then
@@ -56,6 +60,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/market-history.json data/krx-valuation.json
+          git add data/market-history.json data/krx-valuation.json data/bootstrap.json
           git commit -m "chore: 시장 데이터 일일 기록 $(date -u +%Y-%m-%d)"
           git push

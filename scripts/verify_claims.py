@@ -189,23 +189,70 @@ def compare_with_api(url):
 
     checks = []
 
+    # 허용오차는 API의 표시 정밀도보다 작아야 한다. 그래야 반올림된
+    # 출력이 틀렸을 때 잡힌다. (비율 0.1%p 표시 → 0.05, 상관 0.001 → 0.0005,
+    # 개수 → 0)
+    TOL_RATE, TOL_CORR, TOL_COUNT = 0.05, 0.0005, 0
+
     def add(name, theirs, ours, tol):
         ok = theirs is not None and abs(theirs - ours) <= tol
         checks.append((name, ours, theirs, tol, ok))
 
     by_h = {h["days"]: h for h in api["probability"]["byHorizon"]}
     for days in [1, 5, 21, 63, 252, 756, 1260]:
-        add(f"상승확률 {days}일", by_h.get(days, {}).get("pUp"), mine[f"up_{days}"], 0.15)
+        add(f"상승확률 {days}일", by_h.get(days, {}).get("pUp"), mine[f"up_{days}"], TOL_RATE)
 
     daily = next((h for h in api["cost"]["holdings"] if h["days"] == 1), {})
-    add("하루 손익분기", daily.get("breakEvenStock"), mine["breakeven_daily_stock"], 0.2)
+    add("하루 손익분기", daily.get("breakEvenStock"), mine["breakeven_daily_stock"], TOL_RATE)
 
-    add("비중첩 상관", api["honest"]["correlation"], mine["nonoverlap_corr"], 0.02)
-    add("비중첩 표본수", api["honest"]["n"], mine["nonoverlap_n"], 1)
+    add("비중첩 상관", api["honest"]["correlation"], mine["nonoverlap_corr"], TOL_CORR)
+    add("비중첩 표본수", api["honest"]["n"], mine["nonoverlap_n"], TOL_COUNT)
 
     sc = api["scorecard"]
-    add("워크포워드 적중률", sc["hitRate"], mine["wf_hit"], 1.5)
-    add("워크포워드 기준선", sc.get("baselineAlwaysUp"), mine["wf_baseline_always_up"], 1.5)
+    add("워크포워드 적중률", sc["hitRate"], mine["wf_hit"], TOL_RATE)
+    add("워크포워드 기준선", sc.get("baselineAlwaysUp"), mine["wf_baseline_always_up"], TOL_RATE)
+    add("워크포워드 평가횟수", sc.get("n"), mine["wf_n"], TOL_COUNT)
+
+    # ── 2차 검증에서 "검사되지 않는다"고 지적된 항목들 ──────────────
+    # 배당수익률: 원자료에서 직접 재계산
+    dys = [r["dy"] for r in ROWS if r.get("dy") not in (None, 0)]
+    add("배당수익률 평균", (api.get("dividend") or {}).get("avg"),
+        round(sum(dys) / len(dys), 2), 0.005)
+
+    # 손익비 민감도: 공식을 직접 재계산
+    cost_stock = api["cost"]["assumptions"]["stockPct"] / 100
+    payoff = {p["label"]: p for p in api["cost"].get("payoff", [])}
+    for gain, loss in [(1.07, 1.09), (2.0, 1.0), (3.0, 1.0), (1.0, 2.0)]:
+        expected = round((loss / 100 + cost_stock) / (gain / 100 + loss / 100) * 100, 1)
+        match = next((p for p in payoff.values()
+                      if abs(p["gain"] - gain) < 1e-9 and abs(p["loss"] - loss) < 1e-9), None)
+        add(f"손익분기 {gain}/{loss}", (match or {}).get("breakEven"), expected, TOL_RATE)
+
+    # 부트스트랩: 사전 계산 파일과 API 응답이 같은가
+    boot_path = ROOT / "data/bootstrap.json"
+    if boot_path.exists():
+        boot = json.loads(boot_path.read_text())
+        primary = boot["byBlock"][str(boot["primaryBlock"])]
+        api_ci = {c["from"]: c for c in (api.get("bucketCI") or [])}
+        add("부트스트랩 구간 수", len(api_ci), len(primary), TOL_COUNT)
+        for c in primary:
+            a = api_ci.get(c["from"])
+            for key, label in [("medianLow", "중앙값하한"), ("medianHigh", "중앙값상한"),
+                               ("negLow", "손실하한"), ("negHigh", "손실상한")]:
+                add(f"CI {c['from']}-{c['to']} {label}", (a or {}).get(key), c[key], 0.005)
+        meta = api.get("bootstrapMeta") or {}
+        add("부트스트랩 반복수", meta.get("reps"), boot["reps"], TOL_COUNT)
+        if meta.get("reps", 0) < 5000:
+            print("경고: 부트스트랩 반복이 5,000회 미만입니다. 부호 판정이 시드에 흔들립니다.")
+
+    # 오늘 구간 통계
+    mb = api.get("myBucket") or {}
+    bucket_vals = [ret for b, ret in bucket_pairs(temperature())
+                   if b == min(int(mb.get("from", 0) // 20), 4)]
+    if bucket_vals:
+        add("오늘 구간 표본수", mb.get("n"), len(bucket_vals), TOL_COUNT)
+        add("오늘 구간 손실확률", mb.get("negativeRate"),
+            round(100 * sum(1 for v in bucket_vals if v < 0) / len(bucket_vals), 1), TOL_RATE)
 
     print("독립 재계산 ↔ 운영 API 대조\n")
     print(f"{'항목':<20}{'독립계산':>10}{'API':>10}{'허용오차':>9}  판정")

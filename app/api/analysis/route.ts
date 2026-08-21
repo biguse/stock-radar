@@ -134,7 +134,35 @@ export async function GET() {
     }));
   }
 
+  // 2차 검증 지적: 후보마다 데이터 시작일이 달라 서로 다른 시장 국면을
+  // 비교하고 있었다. 모든 후보가 존재하는 공통 기간에서 동일 앵커로 다시 잰다.
+  const firstValid: Record<string, number> = {};
+  for (const c of candidates) {
+    const s = scoreMap[c.key];
+    firstValid[c.key] = s.findIndex((x) => x !== null);
+  }
+  const commonStart = Math.max(...Object.values(firstValid));
+  function commonWindow() {
+    const anchors: number[] = [];
+    for (let i = commonStart; i + 252 < rows.length; i += 252) anchors.push(i);
+    const ret = anchors.map((i) => ((rows[i + 252].kospi - rows[i].kospi) / rows[i].kospi) * 100);
+    const out: Record<string, number> = {};
+    for (const c of candidates) {
+      const xs = anchors.map((i) => scoreMap[c.key][i]);
+      if (xs.some((v) => v === null)) continue;
+      out[c.key] = corr(xs as number[], ret);
+    }
+    return { start: rows[commonStart].d, n: anchors.length, correlations: out };
+  }
+
   return NextResponse.json({
+    candidateSelection: {
+      note: '후보마다 시작일이 다르면 서로 다른 시장 국면을 비교하게 된다. 공통 기간 비교가 공정한 비교다.',
+      firstValid: Object.fromEntries(
+        Object.entries(firstValid).map(([k, i]) => [k, rows[i]?.d ?? null]),
+      ),
+      common: commonWindow(),
+    },
     probability: {
       byHorizon: [1, 5, 21, 63, 252, 756, 1260].map(pUp),
       tomorrowByTemp: pUpByBucket(1),

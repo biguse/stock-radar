@@ -31,12 +31,20 @@ export type AxisKey = 'price' | 'fear' | 'fx' | 'rate' | 'real';
 /**
  * 온도에 실제로 반영되는 축.
  *
- * 처음엔 5축 가중 평균(40/25/15/10/10)이었으나, 겹치지 않는 표본으로
- * 검증한 결과 5축 종합(-0.241)이 가격 단독(-0.298)보다 오히려 나빴다.
- * VIX는 가정과 반대 부호(+0.119)로 나왔다. 근거 없는 가중치가 잡음을
- * 더하고 있었으므로, 실증 근거가 있는 축 하나만 남긴다.
+ * 처음엔 5축 가중 평균(40/25/15/10/10)이었으나 근거 없는 가중치가 잡음을
+ * 더하고 있어 하나만 남겼다.
  *
- * 나머지 넷은 계산은 하되 온도에 넣지 않고 '오늘의 환경'으로만 보여준다.
+ * ⚠️ 왜 '이격도'인가 — 예측력 때문이 아니다.
+ * 2차 검증에서 후보 비교 자체가 불공정했음이 드러났다. 후보마다 데이터
+ * 시작일이 달라(이격도 1996, PBR 2005, CAPE 2007) 서로 다른 시장 국면을
+ * 비교하고 있었다. 모든 후보가 존재하는 공통 기간(2007~, n=19)에서 다시
+ * 재면 PBR(-0.303)이 이격도(-0.146)보다 낫다.
+ *
+ * 그럼에도 이격도를 쓰는 이유는 예측 성적이 아니라 다음 셋이다.
+ *   1) 가장 긴 역사 (1996~). 30년 맥락을 줄 수 있는 유일한 축
+ *   2) 외부 계정 없이 재현 가능 (PBR은 KRX 로그인 필요)
+ *   3) 시민이 바로 이해할 수 있다 (5년 평균 대비 몇 %)
+ * 이 선택은 사전 지정이며, 예측력 우위를 주장하지 않는다.
  */
 export const TEMPERATURE_AXES: AxisKey[] = ['price'];
 export const CONTEXT_AXES: AxisKey[] = ['fear', 'real', 'fx', 'rate'];
@@ -500,6 +508,12 @@ export type BucketCI = {
   signCertain: boolean;
 };
 
+/**
+ * @deprecated 런타임에서 쓰지 말 것. 400회로는 몬테카를로 오차가 커서
+ * '부호 확정' 판정이 시드에 따라 뒤집힌다(2차 검증). 운영은
+ * scripts/build-bootstrap.mjs가 10,000회 × 블록 3종으로 미리 계산한
+ * data/bootstrap.json을 읽는다.
+ */
 export function bucketBootstrap(
   series: DayTemperature[],
   opts: { bucketSize?: number; reps?: number; block?: number; seed?: number } = {},

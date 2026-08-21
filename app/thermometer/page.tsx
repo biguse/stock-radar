@@ -47,10 +47,17 @@ type BucketCI = {
   medianLow: number; medianHigh: number;
   negLow: number; negHigh: number;
   signCertain: boolean;
+  validReps: number;
+};
+
+type BootstrapMeta = {
+  reps: number; blocks: number[]; primaryBlock: number;
+  builtAt: string; uncertainRange: number[];
 };
 
 type ApiResponse = {
   bucketCI?: BucketCI[];
+  bootstrapMeta?: BootstrapMeta;
   dividend?: { avg: number; from: string | null };
   cost?: CostInfo;
   probability?: Probability;
@@ -152,6 +159,7 @@ export default function ThermometerPage() {
               bucket={data.myBucket}
               trendScore={data.gauges.find((g) => g.key === 'trend')?.score ?? 0}
               ci={data.bucketCI?.find((c) => c.from === data.myBucket?.from)}
+              meta={data.bootstrapMeta}
             />
             <Honesty data={data} />
             <Footer data={data} />
@@ -185,9 +193,16 @@ function headlineState(range: { min: number; max: number }): string {
  */
 function headlineTwist(bucket: Bucket, ci?: BucketCI): { main: string; sub: string } {
   const neg = bucket.negativeRate;
-  const wide = ci !== undefined && (!ci.signCertain || ci.negHigh - ci.negLow > 40);
-
-  if (wide && ci) {
+  // 신뢰구간을 못 구했으면 단정하지 않는다(fail-safe). 계산 실패가
+  // 강한 점 추정 문구로 되돌아가면 안 된다.
+  if (ci === undefined) {
+    return {
+      main: '그런데 그 자리가 무엇을 뜻하는지는\n확인 중입니다',
+      sub: `과거 같은 구간의 1년 뒤 손실 확률은 ${neg.toFixed(0)}%로 계산되지만, 불확실성 구간을 아직 확인하지 못했습니다`,
+    };
+  }
+  const wide = !ci.signCertain || ci.negHigh - ci.negLow > 40;
+  if (wide) {
     return {
       main: '그런데 그 자리가 무엇을 뜻하는지는\n데이터가 답하지 못합니다',
       sub: `과거 같은 구간의 1년 뒤 손실 확률은 ${neg.toFixed(0)}%로 계산되지만, 표본이 겹쳐 있어 실제로는 ${ci.negLow.toFixed(0)}~${ci.negHigh.toFixed(0)}% 사이 어디든 될 수 있습니다`,
@@ -623,9 +638,10 @@ function Dividend({ dividend }: { dividend?: { avg: number; from: string | null 
       </div>
       <p className="mt-2 text-[13px] leading-relaxed text-neutral-600">
         코스피는 주가만 반영하는 가격지수라 배당이 들어 있지 않습니다.{' '}
-        {dividend.from?.slice(0, 4)}년 이후 코스피 평균 배당수익률은{' '}
-        <strong className="font-semibold text-neutral-900">연 {dividend.avg}%</strong>였습니다. 실제로
-        주식을 들고 있었다면 위에 적힌 수익률보다 해마다 그만큼 더 받았다는 뜻입니다.
+        {dividend.from?.slice(0, 4)}년 이후 코스피 지수 배당수익률의 일별 평균은{' '}
+        <strong className="font-semibold text-neutral-900">{dividend.avg}%</strong>였습니다. 실제로 받는
+        총수익은 배당 시점·재투자 여부·세금에 따라 달라지므로 이 값을 그대로 더할 수는 없지만, 위
+        숫자들이 실제 투자 성과를 낮게 잡고 있다는 것만은 분명합니다.
       </p>
       <p className="mt-2 text-[12px] leading-relaxed text-neutral-500">
         기간이 길수록 이 차이가 커집니다. 이 페이지의 장기 수치는 실제 투자 성과를 그만큼 낮게 잡고
@@ -646,7 +662,11 @@ function Quote({ quote }: { quote: { who: string; line: string } }) {
   );
 }
 
-function Outcome({ bucket, trendScore, ci }: { bucket: Bucket; trendScore: number; ci?: BucketCI }) {
+function Outcome({
+  bucket, trendScore, ci, meta,
+}: {
+  bucket: Bucket; trendScore: number; ci?: BucketCI; meta?: BootstrapMeta;
+}) {
   const lo = Math.min(bucket.min, 0);
   const hi = Math.max(bucket.max, 0);
   const span = hi - lo || 1;
@@ -656,11 +676,13 @@ function Outcome({ bucket, trendScore, ci }: { bucket: Bucket; trendScore: numbe
     <section className="mt-14 border-t border-neutral-200 pt-8">
       <h2 className="text-[15px] font-bold tracking-tight">과거 이 자리에서, 1년 뒤</h2>
       <p className="mt-1.5 text-[12px] leading-relaxed text-neutral-500">
-        네 잣대는 저마다 답이 달라서 여기서는 하나만 골라야 했습니다. 그중 과거에 미래를 그나마
-        가장 잘 맞혔던 <strong className="font-semibold">주가 위치</strong>를 썼습니다. 오늘 그 점수가{' '}
-        {trendScore.toFixed(0)}점이니,{' '}
-        <strong className="font-semibold">과거에 비슷한 점수대였던 날들이 1년 뒤 어떻게 됐는지</strong>를 모은
-        것입니다. 다른 잣대를 골랐다면 결과도 달라집니다.
+        네 잣대는 저마다 답이 달라서 여기서는 하나만 골라야 했습니다.{' '}
+        <strong className="font-semibold">주가 위치</strong>를 쓴 이유는 예측을 더 잘해서가 아니라,
+        30년으로 가장 길고 외부 계정 없이 누구나 다시 계산할 수 있어서입니다. 실제로 모든 잣대가
+        존재하는 공통 기간(2007년 이후)만 놓고 재면 자산 대비(PBR)가 더 나았습니다. 오늘 주가 위치
+        점수가 {trendScore.toFixed(0)}점이니,{' '}
+        <strong className="font-semibold">과거에 비슷한 점수대였던 날들이 1년 뒤 어떻게 됐는지</strong>를
+        모은 것입니다. 다른 잣대를 골랐다면 결과도 달라집니다.
       </p>
 
       <div className="relative mt-9 h-12">
@@ -700,6 +722,7 @@ function Outcome({ bucket, trendScore, ci }: { bucket: Bucket; trendScore: numbe
           </div>
           <p className="mt-1.5 text-[11px] leading-relaxed text-neutral-500">
             겹치는 구간을 감안해 블록 부트스트랩으로 95% 범위를 구했습니다.
+            {meta ? ` ${meta.reps.toLocaleString('ko-KR')}회 반복, ${meta.primaryBlock}일 블록 기준.` : ''}
           </p>
           <div className="mt-3 space-y-2 text-[12px]">
             <div className="flex items-baseline justify-between">
@@ -726,8 +749,18 @@ function Outcome({ bucket, trendScore, ci }: { bucket: Bucket; trendScore: numbe
           <p className="mt-3 text-[12px] leading-relaxed text-neutral-600">
             {ci.signCertain
               ? '이 구간은 중앙값의 부호가 확정됩니다. 다섯 구간 중 드문 경우입니다.'
-              : '괄호 안이 실제 범위입니다. 중앙값이 플러스인지 마이너스인지조차 확정되지 않습니다. 다섯 구간 중 네 곳이 그렇습니다.'}
+              : '괄호 안이 실제 범위입니다. 중앙값이 플러스인지 마이너스인지조차 확정되지 않습니다.'}
           </p>
+          {meta ? (
+            <p className="mt-2 text-[11px] leading-relaxed text-neutral-400">
+              블록 길이를 {meta.blocks.join('·')}일로 바꿔가며 확인했습니다. 다섯 구간 중 부호를
+              확정할 수 없는 곳이{' '}
+              <strong className="font-medium text-neutral-500">
+                {meta.uncertainRange[0]}~{meta.uncertainRange[1]}곳
+              </strong>
+              으로 블록 선택에 따라 달라집니다. 이 판정은 데이터의 고정된 사실이 아닙니다.
+            </p>
+          ) : null}
         </div>
       ) : null}
 
