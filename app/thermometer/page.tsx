@@ -169,6 +169,7 @@ export default function ThermometerPage() {
               meta={data.bootstrapMeta}
             />
             <Honesty data={data} />
+            <HowItWasMade />
             <Footer data={data} />
           </>
         ) : null}
@@ -914,6 +915,47 @@ function Honesty({ data }: { data: ApiResponse }) {
       <p className="mt-3 text-[13px] leading-relaxed text-neutral-500">
         그래서 이 숫자는 예보가 아닙니다. 지금이 어디쯤인지 보여주는 눈금일 뿐입니다.
       </p>
+    </section>
+  );
+}
+
+function HowItWasMade() {
+  return (
+    <section className="mt-12 bg-neutral-50 p-6">
+      <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-neutral-400">
+        만들어진 과정
+      </div>
+      <h2 className="mt-2 text-[17px] font-bold tracking-tight text-neutral-900">
+        이 숫자들은 확인된 결과가 아니라 탐색한 결과입니다
+      </h2>
+
+      <div className="mt-4 space-y-3 text-[13px] leading-relaxed text-neutral-700">
+        <p>
+          온도로 쓸 잣대를 정할 때 다섯 가지를 놓고 비교했습니다. 주가 위치, PER, PBR,
+          CAPE, 위험 보상. 그중 <strong className="font-semibold">주가 위치</strong>를 골랐습니다.
+        </p>
+        <p>
+          <strong className="font-semibold">그런데 그 비교가 공정하지 않았습니다.</strong> 잣대마다
+          데이터가 시작되는 해가 달라서, 주가 위치만 1996년부터의 외환위기와 닷컴버블을 포함하고
+          나머지는 2004~2007년부터였습니다. 서로 다른 시장을 비교한 셈입니다.
+        </p>
+        <p>
+          다섯 잣대가 모두 존재하는 2007년 이후로 기간을 맞춰 다시 재면{' '}
+          <strong className="font-semibold">자산 대비(PBR)가 더 나았습니다</strong>(−0.30 대 −0.15).
+          그래서 “주가 위치가 미래를 가장 잘 맞혔다”는 설명은 철회했습니다. 지금 이 잣대를 쓰는
+          이유는 예측 성적이 아니라 가장 길고, 외부 계정 없이 누구나 다시 계산할 수 있고, 바로
+          이해되기 때문입니다.
+        </p>
+        <p className="border-l-2 border-neutral-400 pl-4 text-neutral-800">
+          잣대를 고른 뒤의 모든 통계는 그 선택에 쓴 것과 같은 데이터에서 나왔습니다. 통계학에서는
+          이런 결과를 <strong className="font-semibold">탐색적</strong>이라고 부릅니다. 진짜 확인은
+          지금부터 새로 쌓이는 기록으로만 가능하며, 첫 채점은 1년 뒤입니다.
+        </p>
+        <p className="text-neutral-500">
+          이 페이지는 그 기록을 매일 남기고 있습니다. 계산 코드와 검증 기록은 모두 공개되어
+          있습니다.
+        </p>
+      </div>
     </section>
   );
 }

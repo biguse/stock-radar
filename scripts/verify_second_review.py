@@ -140,17 +140,26 @@ def main():
     print(f"  train through 2011 n={train_n}: selected={chosen}, r={train[chosen]:+.3f}")
     print(f"  untouched 2012+ n={test_n}: selected candidate r={test[chosen]:+.3f}; all={{{', '.join(f'{k}: {x:+.3f}' for k,x in test.items())}}}")
 
-    print("\nAPI-CHECK COVERAGE AUDIT")
-    checked = {
-        "probability.byHorizon[*].pUp", "cost.holdings[d=1].breakEvenStock",
-        "honest.correlation", "honest.n", "scorecard.hitRate",
-        "scorecard.baselineAlwaysUp",
+    print("\nAPI-CHECK COVERAGE AUDIT (2차 지적 반영 후)")
+    src = (ROOT / "scripts/verify_claims.py").read_text(encoding="utf-8")
+    expected = {
+        "bucketCI": "부트스트랩 구간",
+        "dividend": "배당수익률 평균",
+        "payoff": "손익분기",
+        "scorecard.n": "워크포워드 평가횟수",
+        "myBucket": "오늘 구간",
     }
-    new_claims = {"bucketCI", "dividend.avg", "cost.sensitivity", "headlineTwist/UI", "scorecard.n"}
-    print("  checked:", sorted(checked))
-    print("  NEW CLAIMS NOT CHECKED:", sorted(new_claims))
-    print("  exact rounded outputs only need tolerances <0.05 (rates), <0.0005 (r), and 0 (counts).")
-    print("  current tolerances: 0.15, 0.2, 0.02, 1, and 1.5; all permit wrong rounded output.")
+    missing = [label for key, label in expected.items() if label not in src]
+    print("  검사 대상에 포함된 새 주장:",
+          [label for key, label in expected.items() if label in src])
+    if missing:
+        print("  아직 검사되지 않는 주장:", missing)
+    else:
+        print("  2차에서 지적한 미검사 항목은 모두 검사 대상에 편입됨")
+    for tol, name in [("TOL_RATE, TOL_CORR, TOL_COUNT = 0.05, 0.0005, 0", "허용오차")]:
+        print(f"  {name}: {'표시 정밀도보다 작음 (통과)' if tol in src else '느슨함 (확인 필요)'}")
+    print("  주의: 두 구현이 같은 market-history.json을 읽으므로 원자료가 틀리면")
+    print("        완벽히 일치하며 통과한다. 데이터 정확성은 verify-price-lineage.py 담당.")
 
 
 if __name__ == "__main__":

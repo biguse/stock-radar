@@ -64,3 +64,15 @@ jobs:
             python3 scripts/verify_claims.py
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # 2차 검증 진단 — 블록 민감도, 후보 선택 편향, 검사 공백 감사
+      # (게이트가 아니라 리포트. 22초 정도 걸린다)
+      - name: Second-review diagnostics
+        if: always()
+        run: |
+          {
+            echo '## 2차 검증 진단 — 민감도·선택편향·검사공백'
+            echo '```'
+            python3 scripts/verify_second_review.py
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
