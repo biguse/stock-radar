@@ -333,92 +333,95 @@ function withDow(iso: string): string {
 function Tomorrow({ probability }: { probability?: Probability }) {
   if (!probability) return null;
   const tomorrow = probability.byHorizon.find((h) => h.days === 1);
+  const fiveYear = probability.byHorizon.find((h) => h.days === 1260);
   if (!tomorrow) return null;
   const { min, max } = probability.tomorrowSpread;
-  const up = tomorrow.pUp;
-  const down = Math.round((100 - up) * 10) / 10;
+  const up = Math.round(tomorrow.pUp);
+  const down = 100 - up;
 
   return (
     <section className="mt-14 border-t border-neutral-200 pt-8">
-      <h2 className="text-[15px] font-bold tracking-tight">다음 거래일에 오를까요</h2>
-      {probability.lastTradingDay ? (
-        <p className="mt-1.5 text-[12px] leading-relaxed text-neutral-400">
-          마지막 거래일은 {withDow(probability.lastTradingDay)}입니다.
-          {probability.marketClosedToday ? ' 오늘은 주말이라 장이 열리지 않습니다.' : ''}{' '}
-          다음 거래일이 정확히 언제인지는 휴장일에 따라 달라져 단정하지 않습니다.
-        </p>
-      ) : null}
+      <h2 className="text-[1.45rem] font-bold leading-[1.4] tracking-tight text-neutral-900">
+        내일은 아무도 모릅니다
+      </h2>
+      <p className="mt-3 text-[15px] leading-relaxed text-neutral-700">
+        지난 30년 코스피를 하루 단위로{' '}
+        <strong className="font-semibold">{tomorrow.n.toLocaleString('ko-KR')}번</strong> 세어봤습니다.
+        오른 날이 <strong className="font-semibold">{up}번</strong>, 내린 날이{' '}
+        <strong className="font-semibold">{down}번</strong>. 100번 중 {up - down}번 차이입니다.
+      </p>
 
-      {/* 52%를 '오를 가능성이 높다'로 읽지 않도록, 오름과 내림을 반드시 함께 보여준다 */}
-      <div className="mt-7">
-        <div className="flex items-end justify-between">
-          <div>
-            <div className="text-[11px] text-neutral-400">오른다</div>
-            <div className="text-[2.6rem] font-bold leading-none tabular-nums text-neutral-900">
-              {up.toFixed(0)}<span className="text-lg text-neutral-400">%</span>
-            </div>
+      <div className="mt-6">
+        <div className="flex h-[46px] w-full overflow-hidden text-[12px] font-semibold text-white">
+          <div className="flex h-full items-center justify-center bg-neutral-800" style={{ width: `${up}%` }}>
+            올랐다 {up}
           </div>
-          <div className="pb-1 text-[13px] font-medium text-neutral-400">거의 반반</div>
-          <div className="text-right">
-            <div className="text-[11px] text-neutral-400">내린다</div>
-            <div className="text-[2.6rem] font-bold leading-none tabular-nums text-neutral-900">
-              {down.toFixed(0)}<span className="text-lg text-neutral-400">%</span>
-            </div>
+          <div
+            className="flex h-full items-center justify-center bg-neutral-300 text-neutral-700"
+            style={{ width: `${down}%` }}
+          >
+            내렸다 {down}
           </div>
         </div>
-        <div className="mt-3 flex h-[14px] w-full overflow-hidden">
-          <div className="h-full bg-neutral-800" style={{ width: `${up}%` }} />
-          <div className="h-full bg-neutral-300" style={{ width: `${down}%` }} />
-        </div>
+        <p className="mt-2 text-center text-[13px] font-medium text-neutral-500">사실상 동전 던지기입니다</p>
       </div>
 
-      <p className="mt-6 text-[16px] leading-relaxed text-neutral-800">
-        지난 30년, 코스피는 100번 중 <strong className="font-semibold">{up.toFixed(0)}번 올랐고{' '}
-        {down.toFixed(0)}번 내렸습니다.</strong> 오른 날이 {(up - down).toFixed(0)}번 더 많았을 뿐입니다.
+      <p className="mt-7 text-[15px] leading-relaxed text-neutral-800">
+        그리고 오늘이 공포권이든 과열권이든, 이 숫자는{' '}
+        <strong className="font-semibold">{min}%에서 {max}% 사이</strong>를 벗어나지 않습니다.{' '}
+        <strong className="font-semibold">위에서 본 네 잣대 전부가 내일에 대해서는 쓸모가 없습니다.</strong>
       </p>
-      <p className="mt-3 text-[14px] leading-relaxed text-neutral-500">
-        {up.toFixed(0)}%를 “오를 가능성이 높다”로 읽으면 안 됩니다. 동전을 던지는 것과 거의 같다는
-        뜻입니다.
-      </p>
-
-      <p className="mt-6 text-[15px] leading-relaxed text-neutral-800">
-        그리고 오늘이 몇 도이든 이 숫자는{' '}
-        <strong className="font-semibold">{min}%에서 {max}% 사이</strong>입니다. 공포권일 때도 과열권일
-        때도 반반에서 크게 벗어나지 않습니다. 위에 있는 어떤 잣대도 하루 앞에 대해서는 알려주는 것이
-        거의 없습니다.
+      <p className="mt-3 text-[13px] leading-relaxed text-neutral-500">
+        내일 오를 종목을 알려주는 곳은 많습니다. 그 예측이 30년 기록에서 어떤 근거를 갖는지 보여주는
+        곳은 드뭅니다. 이 페이지가 하려는 일이 그것입니다.
       </p>
 
-      <div className="mt-9">
-        <div className="text-[13px] font-semibold text-neutral-900">그런데 기간을 늘리면 달라집니다</div>
-        <div className="mt-4 space-y-2">
+      <div className="mt-10 border-t border-neutral-200 pt-7">
+        <h3 className="text-[1.45rem] font-bold leading-[1.4] tracking-tight text-neutral-900">
+          바뀌는 건 기간뿐입니다
+        </h3>
+        <div className="mt-5 space-y-2">
           {probability.byHorizon.map((h) => {
-            const d = Math.round((100 - h.pUp) * 10) / 10;
+            const u = Math.round(h.pUp);
             return (
               <div key={h.days} className="flex items-center gap-3">
                 <div className="w-[66px] shrink-0 whitespace-nowrap text-[12px] text-neutral-500">
                   {HORIZON_LABEL[h.days]}
                 </div>
-                <div className="flex h-[16px] flex-1 overflow-hidden">
-                  <div className="h-full bg-neutral-800" style={{ width: `${h.pUp}%` }} />
-                  <div className="h-full bg-neutral-200" style={{ width: `${d}%` }} />
+                <div className="flex h-[18px] flex-1 overflow-hidden">
+                  <div className="h-full bg-neutral-800" style={{ width: `${u}%` }} />
+                  <div className="h-full bg-neutral-200" style={{ width: `${100 - u}%` }} />
                 </div>
-                <div className="w-[62px] shrink-0 text-right text-[12px] font-semibold tabular-nums text-neutral-900">
-                  {h.pUp.toFixed(0)}:{d.toFixed(0)}
+                <div className="w-[58px] shrink-0 text-right text-[12px] font-semibold tabular-nums text-neutral-900">
+                  {u} : {100 - u}
                 </div>
               </div>
             );
           })}
         </div>
         <p className="mt-3 text-[11px] text-neutral-400">진한 쪽이 오른 비율, 옅은 쪽이 내린 비율입니다.</p>
-        <p className="mt-2 text-[11px] leading-relaxed text-neutral-400">
-          3년·5년 수치는 겹치는 구간을 세었기 때문에 독립 표본이 각각 12회·7회에 불과합니다. 방향은
-          분명하지만 정확한 숫자로 받아들이지는 마세요.
+
+        {fiveYear ? (
+          <p className="mt-6 text-[16px] leading-relaxed text-neutral-800">
+            하루를 맞히려 하면 <strong className="font-semibold">{up}대 {down}</strong>, 거의 동전입니다.
+            5년을 기다린 경우에는 <strong className="font-semibold">{Math.round(fiveYear.pUp)}대{' '}
+            {100 - Math.round(fiveYear.pUp)}</strong>였습니다.
+          </p>
+        ) : null}
+        <p className="mt-3 text-[12px] leading-relaxed text-neutral-400">
+          단, 3년·5년 수치는 겹치는 구간을 세었기 때문에 독립 표본이 각각 12회·7회뿐입니다. 방향은
+          분명하지만 정확한 숫자로 받아들이지는 마세요. 반대로 맨 위 하루 수치는 9,452번이 모두 겹치지
+          않아, 이 페이지에서 가장 믿을 만한 숫자입니다.
         </p>
       </div>
 
-      <p className="mt-7 border-l-2 border-neutral-900 pl-4 text-[15px] font-medium leading-relaxed text-neutral-900">
-        이 기록이 말하는 것은 하나입니다. 짧게 볼수록 동전에 가깝고, 길게 볼수록 오른 쪽이 많았습니다.
-      </p>
+      {probability.lastTradingDay ? (
+        <p className="mt-8 text-[11px] leading-relaxed text-neutral-400">
+          마지막 거래일은 {withDow(probability.lastTradingDay)}입니다.
+          {probability.marketClosedToday ? ' 오늘은 주말이라 장이 열리지 않습니다.' : ''} 다음 거래일이
+          정확히 언제인지는 휴장일에 따라 달라져 단정하지 않습니다.
+        </p>
+      ) : null}
     </section>
   );
 }
