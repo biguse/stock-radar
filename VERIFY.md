@@ -86,6 +86,30 @@ KRX가 소급 수정한 값을 쓰고 있을 가능성.
 개별주식 왕복 0.23%(증권거래세 0.15% + 수수료 0.03% + 슬리피지 0.05%),
 ETF 왕복 0.08%. 2026년 기준으로 타당한가? 세율·수수료 최신값 확인 요청.
 
+## 상시 교차검증 (CI 자동화)
+
+`scripts/verify_claims.py`는 외부 검증자가 작성한 독립 구현이다.
+TypeScript 구현을 일절 import하지 않고 `data/market-history.json`에서
+온도 시계열을 처음부터 다시 만든다.
+
+이제 매 push마다 GitHub Actions가 다음을 수행한다.
+
+1. Next 앱을 빌드하고 실제로 띄운다
+2. 파이썬으로 핵심 수치를 독립 재계산한다
+3. 운영 API 응답과 항목별로 대조한다 (허용오차 포함)
+4. 어긋나면 **CI가 실패**한다
+
+구조적 점검도 포함한다. 예를 들어 1년 지평의 기준선으로 50%를
+쓰고 있으면(과거에 저지른 오류) 실패한다.
+
+```bash
+python3 scripts/verify_claims.py                # 진단 리포트
+python3 scripts/verify_claims.py --json         # 기계 판독용
+python3 scripts/verify_claims.py --api <URL>    # 운영 API와 대조
+```
+
+현재 상태: **12/12 항목 일치**
+
 ## 검증 방법
 
 ```bash

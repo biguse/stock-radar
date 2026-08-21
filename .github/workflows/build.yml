@@ -26,3 +26,41 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # ── 교차검증 ──────────────────────────────────────────────
+      # 파이썬으로 독립 재계산한 값과 운영 API의 값을 대조한다.
+      # 두 구현(TypeScript / Python)이 어긋나면 여기서 실패한다.
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install verification deps
+        run: pip install --quiet numpy scipy
+
+      - name: Start server
+        run: |
+          npm start &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3000/api/thermometer -o /dev/null && break
+            sleep 2
+          done
+
+      - name: Cross-check TypeScript vs Python
+        run: |
+          {
+            echo '## 교차검증 — 독립 재계산 ↔ 운영 API'
+            echo '```'
+            python3 scripts/verify_claims.py --api http://localhost:3000/api/thermometer
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Full diagnostic report
+        if: always()
+        run: |
+          {
+            echo '## 진단 리포트 (민감도·부트스트랩)'
+            echo '```'
+            python3 scripts/verify_claims.py
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
