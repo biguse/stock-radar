@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import historyData from '@/data/market-history.json';
 import {
+  expandingPercentileSeries,
   buildBuckets,
   computeTemperatureSeries,
   temperatureLabel,
@@ -123,6 +124,24 @@ async function build() {
     // 라이브 실패 시 마지막 배치 값 사용
   }
 
+  // 밸류에이션 잣대 (KRX 지수 PER/PBR) — 온도에는 넣지 않고 보조 지표로 제시
+  const perSeries = expandingPercentileSeries(rows.map((r) => r.per ?? null), { warmup: 750 });
+  const pbrSeries = expandingPercentileSeries(rows.map((r) => r.pbr ?? null), { warmup: 750 });
+  function latestOf(raw: (number | null | undefined)[], pct: (number | null)[]) {
+    for (let i = raw.length - 1; i >= 0; i--) {
+      const v = raw[i];
+      const p = pct[i];
+      if (v !== null && v !== undefined && p !== null) {
+        return { raw: v, score: Math.round(p * 10) / 10, date: rows[i].d };
+      }
+    }
+    return null;
+  }
+  const valuation = {
+    per: latestOf(rows.map((r) => r.per), perSeries),
+    pbr: latestOf(rows.map((r) => r.pbr), pbrSeries),
+  };
+
   const myBucket =
     current !== null
       ? buckets.find((b) => current!.temp >= b.from && current!.temp < b.to) ?? null
@@ -154,6 +173,7 @@ async function build() {
           })),
         }
       : null,
+    valuation,
     myBucket,
     buckets,
     validation,

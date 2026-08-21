@@ -4,7 +4,10 @@ import { useEffect, useState } from 'react';
 
 type Axis = { key: string; label: string; raw: number; score: number; unit: string };
 type Bucket = { from: number; to: number; n: number; min: number; median: number; max: number; negativeRate: number };
+type Valuation = { raw: number; score: number; date: string } | null;
+
 type ApiResponse = {
+  valuation?: { per: Valuation; pbr: Valuation };
   current: {
     date: string; kospi: number; temp: number; label: string;
     quote: { who: string; line: string }; axes: Axis[];
@@ -83,6 +86,7 @@ export default function ThermometerPage() {
           <>
             <Temp current={data.current} />
             <Axes axes={data.current.axes} />
+            <Valuations valuation={data.valuation} today={data.current.date} />
             <Outcome bucket={data.myBucket} />
             <Honesty data={data} />
             <Footer data={data} />
@@ -171,9 +175,9 @@ function Axes({ axes }: { axes: Axis[] }) {
           </>
         ) : null}
         <p className="mt-4 border-l-2 border-neutral-900 pl-4 text-[13px] leading-relaxed text-neutral-600">
-          <strong className="font-semibold text-neutral-900">주가만 봅니다. 기업 이익은 보지 않습니다.</strong>{' '}
-          이익이 함께 늘었다면 높이 올라온 것이 곧 비싼 것은 아닙니다. 30년치 코스피 PER·PBR을 구할 수
-          없어 쓰지 못했습니다.
+          <strong className="font-semibold text-neutral-900">이 숫자는 주가만 봅니다.</strong>{' '}
+          기업 이익이 함께 늘었다면 높이 올라온 것이 곧 비싼 것은 아닙니다. 그래서 아래에 이익·자산
+          대비로도 따로 확인했습니다.
         </p>
       </section>
 
@@ -202,6 +206,63 @@ function Axes({ axes }: { axes: Axis[] }) {
         </div>
       </section>
     </>
+  );
+}
+
+function Valuations({
+  valuation,
+  today,
+}: {
+  valuation?: { per: Valuation; pbr: Valuation };
+  today: string;
+}) {
+  const per = valuation?.per;
+  const pbr = valuation?.pbr;
+  if (!per && !pbr) return null;
+  // 갱신이 밀리면 낡은 값을 오늘 값처럼 보여주지 않도록 기준일을 밝힌다
+  const asOf = pbr?.date ?? per?.date ?? null;
+  const stale = asOf !== null && asOf !== today;
+
+  const items = [
+    pbr ? { label: '자산 대비 (PBR)', v: `${pbr.raw.toFixed(2)}배`, score: pbr.score } : null,
+    per ? { label: '이익 대비 (PER)', v: `${per.raw.toFixed(1)}배`, score: per.score } : null,
+  ].filter(Boolean) as { label: string; v: string; score: number }[];
+
+  return (
+    <section className="mt-12">
+      <h2 className="text-[15px] font-bold tracking-tight">비싼가 — 다른 잣대로</h2>
+      <p className="mt-1.5 text-[12px] leading-relaxed text-neutral-400">
+        코스피의 자산·이익 대비 가격을 2000년대 초부터의 기록과 비교했습니다.
+        {stale && asOf ? ` (${asOf.slice(5).replace('-', '월 ')}일 기준)` : ''}
+      </p>
+      <div className="mt-4 space-y-4">
+        {items.map((it) => (
+          <div key={it.label}>
+            <div className="flex items-baseline justify-between">
+              <span className="text-[13px] text-neutral-600">{it.label}</span>
+              <span className="text-[15px] font-semibold tabular-nums text-neutral-900">
+                {it.v}
+                <span className="ml-2 text-[12px] font-normal" style={{ color: tempColor(it.score) }}>
+                  상위 {(100 - it.score).toFixed(0)}%
+                </span>
+              </span>
+            </div>
+            <div className="mt-1.5 h-[7px] w-full bg-neutral-100">
+              <div className="h-full" style={{ width: `${Math.max(2, Math.min(100, it.score))}%`, background: tempColor(it.score) }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      {pbr && per ? (
+        <p className="mt-4 text-[14px] leading-relaxed text-neutral-700">
+          {per.score < pbr.score - 8
+            ? '기업 이익이 실제로 크게 늘어 이익 대비로는 덜 극단적입니다. 다만 자산 대비로는 여전히 최상단입니다.'
+            : per.score > pbr.score + 8
+            ? '자산 대비로는 덜 부담스럽지만, 이익 대비로는 높은 편입니다.'
+            : '이익 대비와 자산 대비가 비슷한 수준을 가리킵니다.'}
+        </p>
+      ) : null}
+    </section>
   );
 }
 

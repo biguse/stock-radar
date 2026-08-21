@@ -16,6 +16,10 @@ export type MarketRow = {
   y10: number | null;
   spread: number | null;
   expYoY: number | null;
+  /** 코스피 지수 PER (KRX, 2001~) */
+  per?: number | null;
+  /** 코스피 지수 PBR (KRX, 2002.4~) */
+  pbr?: number | null;
 };
 
 export type AxisKey = 'price' | 'fear' | 'fx' | 'rate' | 'real';
@@ -78,6 +82,29 @@ function insertSorted(sorted: number[], value: number): void {
 }
 
 export type AxisScore = { key: AxisKey; raw: number; score: number };
+
+/**
+ * 확장창 백분위 시계열.
+ * i번째 값은 0..i-1 표본 안에서의 위치로만 환산한다 (미래 정보 차단).
+ * warmup 미만 구간은 null.
+ */
+export function expandingPercentileSeries(
+  values: (number | null)[],
+  opts: { invert?: boolean; warmup?: number } = {},
+): (number | null)[] {
+  const warmup = opts.warmup ?? WARMUP;
+  const sample: number[] = [];
+  return values.map((v) => {
+    if (v === null || !Number.isFinite(v)) return null;
+    if (sample.length < warmup) {
+      insertSorted(sample, v);
+      return null;
+    }
+    const pct = percentileRank(sample, v);
+    insertSorted(sample, v);
+    return opts.invert ? 100 - pct : pct;
+  });
+}
 
 export type DayTemperature = {
   d: string;
