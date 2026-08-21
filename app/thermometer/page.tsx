@@ -91,9 +91,9 @@ export default function ThermometerPage() {
       <main className="mx-auto max-w-xl px-6 pb-20 pt-14">
         <header className="text-center">
           <h1 className="text-[2.4rem] font-bold leading-none tracking-tight">시장 온도계</h1>
-          <p className="mx-auto mt-4 max-w-sm text-[14px] leading-relaxed text-neutral-500">
-            내일을 맞히지 않습니다.<br />
-            <span className="font-semibold text-neutral-900">오늘이 어디인지</span> 알려드립니다.
+          <p className="mx-auto mt-4 max-w-[19rem] text-[14px] leading-relaxed text-neutral-500">
+            시장이 지금 어디에 있는지,<br />
+            그리고 그게 <span className="font-semibold text-neutral-900">무엇을 뜻하지 않는지</span>.
           </p>
         </header>
 
@@ -117,40 +117,40 @@ export default function ThermometerPage() {
   );
 }
 
-/** 헤드라인 문장 — 숫자가 아니라 말로 상태를 알려준다 */
-function headline(range: { min: number; max: number }, gauges: Gauge[]) {
+/**
+ * 헤드라인.
+ * "증시가 높다"는 차트만 봐도 아는 뻔한 사실이라 부제로 내리고,
+ * 사람들이 모르는 사실 — 그 자리가 무엇을 뜻하지 않는지 — 을 본문에 올린다.
+ */
+function headlineState(range: { min: number; max: number }): string {
   const { min, max } = range;
-  const top = gauges.filter((g) => g.score >= 90).length;
-  const bottom = gauges.filter((g) => g.score <= 10).length;
+  if (min >= 90) return '지금 한국 증시는 30년 기록 중 거의 최고 자리에 있습니다';
+  if (min >= 80) return '지금 한국 증시는 30년 기록 중 가장 높은 축에 있습니다';
+  if (min >= 60) return '지금 한국 증시는 역사적으로 높은 자리에 있습니다';
+  if (max <= 10) return '지금 한국 증시는 30년 기록 중 거의 최저 자리에 있습니다';
+  if (max <= 20) return '지금 한국 증시는 30년 기록 중 가장 낮은 축에 있습니다';
+  if (max <= 40) return '지금 한국 증시는 역사적으로 낮은 자리에 있습니다';
+  if (max - min > 40) return '지금 시장은 잣대마다 답이 크게 엇갈립니다';
+  return '지금 한국 증시는 중간쯤에 있습니다';
+}
 
-  if (min >= 80)
+/** 뻔하지 않은 쪽 — 그 자리에서 실제로 무슨 일이 있었나 */
+function headlineTwist(bucket: Bucket): { main: string; sub: string } {
+  const neg = bucket.negativeRate;
+  const spread = `${bucket.min.toFixed(0)}%부터 +${bucket.max.toFixed(0)}%까지 갈렸습니다`;
+  if (neg >= 45 && neg <= 55)
     return {
-      main: '지금 한국 증시는 30년 기록 중 가장 높은 자리에 있습니다',
-      sub: '네 잣대가 모두 최상단을 가리킵니다. 이견이 없습니다.',
+      main: '그런데 과거 같은 자리에서\n1년 뒤 결과는 반반이었습니다',
+      sub: `손실로 끝난 경우 ${neg.toFixed(0)}% · ${spread}`,
     };
-  if (min >= 60)
+  if (neg > 55)
     return {
-      main: '지금 한국 증시는 역사적으로 높은 자리에 있습니다',
-      sub: `네 잣대가 모두 상단권 이상을 가리킵니다.${top > 0 ? ` 그중 ${top}개는 최상단입니다.` : ''} 가장 낮게 본 잣대도 ${min.toFixed(0)}점입니다.`,
-    };
-  if (max <= 20)
-    return {
-      main: '지금 한국 증시는 30년 기록 중 가장 낮은 자리에 있습니다',
-      sub: '네 잣대가 모두 최하단을 가리킵니다.',
-    };
-  if (max <= 40)
-    return {
-      main: '지금 한국 증시는 역사적으로 낮은 자리에 있습니다',
-      sub: `네 잣대가 모두 하단권입니다.${bottom > 0 ? ` 그중 ${bottom}개는 최하단입니다.` : ''}`,
-    };
-  if (max - min > 40)
-    return {
-      main: '지금은 잣대마다 답이 크게 엇갈립니다',
-      sub: `가장 낮게 본 잣대는 ${min.toFixed(0)}점, 가장 높게 본 잣대는 ${max.toFixed(0)}점입니다. 지금은 누구의 확신도 믿기 어렵습니다.`,
+      main: `그리고 과거 같은 자리에서는\n1년 뒤 손실이 더 많았습니다`,
+      sub: `손실로 끝난 경우 ${neg.toFixed(0)}% · ${spread}`,
     };
   return {
-    main: '지금 한국 증시는 중간쯤에 있습니다',
-    sub: `잣대에 따라 ${min.toFixed(0)}점에서 ${max.toFixed(0)}점 사이를 가리킵니다.`,
+    main: '그리고 과거 같은 자리에서는\n1년 뒤 오른 경우가 더 많았습니다',
+    sub: `손실로 끝난 경우 ${neg.toFixed(0)}% · ${spread}`,
   };
 }
 
@@ -166,16 +166,28 @@ function Headline({
   bucket: Bucket | null;
 }) {
   const [y, m, d] = current.date.split('-');
-  const h = headline(range, gauges);
+  const state = headlineState(range);
+  const twist = bucket ? headlineTwist(bucket) : null;
 
   return (
     <section className="mt-12">
-      <h2 className="text-center text-[1.7rem] font-bold leading-[1.35] tracking-tight text-neutral-900">
-        {h.main}
-      </h2>
+      <p className="text-center text-[14px] leading-relaxed text-neutral-500">{state}.</p>
+
+      {twist ? (
+        <>
+          <h2 className="mt-3 whitespace-pre-line text-center text-[1.7rem] font-bold leading-[1.35] tracking-tight text-neutral-900">
+            {twist.main}
+          </h2>
+          <p className="mt-3 text-center text-[13px] text-neutral-500">{twist.sub}</p>
+        </>
+      ) : (
+        <h2 className="mt-3 text-center text-[1.7rem] font-bold leading-[1.35] tracking-tight text-neutral-900">
+          {state}
+        </h2>
+      )}
 
       {/* 네 잣대의 위치를 한 줄에 겹쳐 보여준다 */}
-      <div className="relative mt-8 h-8">
+      <div className="relative mt-9 h-8">
         <div className="absolute top-[14px] h-[3px] w-full bg-neutral-200" />
         {gauges.map((g) => (
           <div
@@ -193,17 +205,11 @@ function Headline({
         <div className="absolute right-0 top-0 text-[10px] text-neutral-400">과열 100</div>
       </div>
 
-      <p className="mt-5 text-center text-[14px] leading-relaxed text-neutral-600">{h.sub}</p>
-
-      {bucket ? (
-        <p className="mx-auto mt-6 max-w-[22rem] border-t border-neutral-200 pt-5 text-center text-[15px] leading-relaxed text-neutral-800">
-          다만 <strong className="font-semibold">과거 같은 자리에서 1년 뒤 결과는 반반이었습니다.</strong>
-          <span className="mt-1 block text-[13px] text-neutral-500">
-            손실로 끝난 경우 {bucket.negativeRate.toFixed(0)}% · 결과는 {bucket.min.toFixed(0)}%부터 +
-            {bucket.max.toFixed(0)}%까지 갈렸습니다
-          </span>
-        </p>
-      ) : null}
+      <p className="mt-4 text-center text-[13px] leading-relaxed text-neutral-500">
+        네 잣대가 모두 {range.min >= 60 ? '상단권 이상' : range.max <= 40 ? '하단권' : '중간 부근'}을
+        가리킵니다. 가장 낮게 본 잣대가 {range.min.toFixed(0)}점, 가장 높게 본 잣대가{' '}
+        {range.max.toFixed(0)}점입니다.
+      </p>
 
       <p className="mt-6 text-center text-[13px] text-neutral-400">
         코스피 {current.kospi.toLocaleString('ko-KR', { maximumFractionDigits: 0 })} · {y}년 {Number(m)}월{' '}
