@@ -209,7 +209,8 @@ function Tomorrow({ probability }: { probability?: Probability }) {
   const tomorrow = probability.byHorizon.find((h) => h.days === 1);
   if (!tomorrow) return null;
   const { min, max } = probability.tomorrowSpread;
-  const maxP = Math.max(...probability.byHorizon.map((h) => h.pUp));
+  const up = tomorrow.pUp;
+  const down = Math.round((100 - up) * 10) / 10;
 
   return (
     <section className="mt-14 border-t border-neutral-200 pt-8">
@@ -222,53 +223,75 @@ function Tomorrow({ probability }: { probability?: Probability }) {
         </p>
       ) : null}
 
-      <div className="mt-6 text-center">
-        <div className="text-[4.2rem] font-bold leading-none tracking-tighter text-neutral-900">
-          {tomorrow.pUp.toFixed(0)}
-          <span className="text-3xl text-neutral-300">%</span>
+      {/* 52%를 '오를 가능성이 높다'로 읽지 않도록, 오름과 내림을 반드시 함께 보여준다 */}
+      <div className="mt-7">
+        <div className="flex items-end justify-between">
+          <div>
+            <div className="text-[11px] text-neutral-400">오른다</div>
+            <div className="text-[2.6rem] font-bold leading-none tabular-nums text-neutral-900">
+              {up.toFixed(0)}<span className="text-lg text-neutral-400">%</span>
+            </div>
+          </div>
+          <div className="pb-1 text-[13px] font-medium text-neutral-400">거의 반반</div>
+          <div className="text-right">
+            <div className="text-[11px] text-neutral-400">내린다</div>
+            <div className="text-[2.6rem] font-bold leading-none tabular-nums text-neutral-900">
+              {down.toFixed(0)}<span className="text-lg text-neutral-400">%</span>
+            </div>
+          </div>
         </div>
-        <p className="mt-3 text-[13px] leading-relaxed text-neutral-500">
-          지난 30년간 코스피가 <strong className="font-semibold text-neutral-700">다음 거래일</strong>에 오른 비율입니다.<br />
-          {tomorrow.n.toLocaleString('ko-KR')}번을 세었습니다.
-        </p>
+        <div className="mt-3 flex h-[14px] w-full overflow-hidden">
+          <div className="h-full bg-neutral-800" style={{ width: `${up}%` }} />
+          <div className="h-full bg-neutral-300" style={{ width: `${down}%` }} />
+        </div>
       </div>
 
-      <p className="mt-7 text-[15px] leading-relaxed text-neutral-800">
-        그리고 오늘이 몇 도이든, 이 숫자는{' '}
-        <strong className="font-semibold">{min}%에서 {max}% 사이</strong>입니다. 공포권일 때도, 과열권일
-        때도 마찬가지입니다.
+      <p className="mt-6 text-[16px] leading-relaxed text-neutral-800">
+        지난 30년, 코스피는 100번 중 <strong className="font-semibold">{up.toFixed(0)}번 올랐고{' '}
+        {down.toFixed(0)}번 내렸습니다.</strong> 오른 날이 {(up - down).toFixed(0)}번 더 많았을 뿐입니다.
       </p>
-      <p className="mt-2 text-[14px] leading-relaxed text-neutral-500">
-        위에 있는 어떤 잣대도 다음 하루에 대해서는 알려주는 것이 거의 없습니다. 하루 앞을 맞히려는
-        시도는 동전던지기에 아주 조금 무게를 얹는 일에 가깝습니다.
+      <p className="mt-3 text-[14px] leading-relaxed text-neutral-500">
+        {up.toFixed(0)}%를 “오를 가능성이 높다”로 읽으면 안 됩니다. 동전을 던지는 것과 거의 같다는
+        뜻입니다.
+      </p>
+
+      <p className="mt-6 text-[15px] leading-relaxed text-neutral-800">
+        그리고 오늘이 몇 도이든 이 숫자는{' '}
+        <strong className="font-semibold">{min}%에서 {max}% 사이</strong>입니다. 공포권일 때도 과열권일
+        때도 반반에서 크게 벗어나지 않습니다. 위에 있는 어떤 잣대도 하루 앞에 대해서는 알려주는 것이
+        거의 없습니다.
       </p>
 
       <div className="mt-9">
         <div className="text-[13px] font-semibold text-neutral-900">그런데 기간을 늘리면 달라집니다</div>
         <div className="mt-4 space-y-2">
-          {probability.byHorizon.map((h) => (
-            <div key={h.days} className="flex items-center gap-3">
-              <div className="w-[66px] shrink-0 whitespace-nowrap text-[12px] text-neutral-500">{HORIZON_LABEL[h.days]}</div>
-              <div className="h-[16px] flex-1 bg-neutral-100">
-                <div
-                  className="h-full bg-neutral-800"
-                  style={{ width: `${(h.pUp / maxP) * 100}%` }}
-                />
+          {probability.byHorizon.map((h) => {
+            const d = Math.round((100 - h.pUp) * 10) / 10;
+            return (
+              <div key={h.days} className="flex items-center gap-3">
+                <div className="w-[66px] shrink-0 whitespace-nowrap text-[12px] text-neutral-500">
+                  {HORIZON_LABEL[h.days]}
+                </div>
+                <div className="flex h-[16px] flex-1 overflow-hidden">
+                  <div className="h-full bg-neutral-800" style={{ width: `${h.pUp}%` }} />
+                  <div className="h-full bg-neutral-200" style={{ width: `${d}%` }} />
+                </div>
+                <div className="w-[62px] shrink-0 text-right text-[12px] font-semibold tabular-nums text-neutral-900">
+                  {h.pUp.toFixed(0)}:{d.toFixed(0)}
+                </div>
               </div>
-              <div className="w-[44px] shrink-0 text-right text-[13px] font-semibold tabular-nums text-neutral-900">
-                {h.pUp.toFixed(0)}%
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
-        <p className="mt-4 text-[11px] leading-relaxed text-neutral-400">
+        <p className="mt-3 text-[11px] text-neutral-400">진한 쪽이 오른 비율, 옅은 쪽이 내린 비율입니다.</p>
+        <p className="mt-2 text-[11px] leading-relaxed text-neutral-400">
           3년·5년 수치는 겹치는 구간을 세었기 때문에 독립 표본이 각각 12회·7회에 불과합니다. 방향은
           분명하지만 정확한 숫자로 받아들이지는 마세요.
         </p>
       </div>
 
       <p className="mt-7 border-l-2 border-neutral-900 pl-4 text-[15px] font-medium leading-relaxed text-neutral-900">
-        확률을 높이는 가장 확실한 방법은 맞히는 것이 아니라 기다리는 것입니다.
+        이 기록이 말하는 것은 하나입니다. 짧게 볼수록 동전에 가깝고, 길게 볼수록 오른 쪽이 많았습니다.
       </p>
     </section>
   );
