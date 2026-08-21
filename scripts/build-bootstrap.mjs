@@ -125,6 +125,95 @@ function run(block) {
   }).filter(Boolean);
 }
 
+/* ── 고전 기술적 지표 검정 ────────────────────────────────────────
+ * 볼린저 밴드·RSI가 다음 거래일 방향과 관계가 있는가.
+ * 다음날 수익률은 창이 겹치지 않아 표본 9,400여 개가 그대로 살아있다.
+ * 구간 경계는 확장창 백분위로 정해 룩어헤드를 막는다.
+ * ──────────────────────────────────────────────────────────────── */
+function expandingPct(vals) {
+  const s = [];
+  return vals.map((v) => {
+    if (v === null || !Number.isFinite(v)) return null;
+    if (s.length < WARMUP) { insertSorted(s, v); return null; }
+    const p = pctRank(s, v);
+    insertSorted(s, v);
+    return p;
+  });
+}
+function bollingerPctB(period, k) {
+  const o = new Array(px.length).fill(null);
+  for (let i = period - 1; i < px.length; i++) {
+    let s = 0; for (let j = i - period + 1; j <= i; j++) s += px[j];
+    const ma = s / period;
+    let v = 0; for (let j = i - period + 1; j <= i; j++) v += (px[j] - ma) ** 2;
+    const sd = Math.sqrt(v / period);
+    if (sd > 0) o[i] = ((px[i] - (ma - k * sd)) / (2 * k * sd)) * 100;
+  }
+  return o;
+}
+function rsi(period) {
+  const o = new Array(px.length).fill(null);
+  let ag = 0, al = 0;
+  for (let i = 1; i <= period; i++) { const d = px[i] - px[i - 1]; if (d > 0) ag += d; else al -= d; }
+  ag /= period; al /= period;
+  o[period] = al === 0 ? 100 : 100 - 100 / (1 + ag / al);
+  for (let i = period + 1; i < px.length; i++) {
+    const d = px[i] - px[i - 1];
+    ag = (ag * (period - 1) + (d > 0 ? d : 0)) / period;
+    al = (al * (period - 1) + (d < 0 ? -d : 0)) / period;
+    o[i] = al === 0 ? 100 : 100 - 100 / (1 + ag / al);
+  }
+  return o;
+}
+function devN(period) {
+  const o = new Array(px.length).fill(null);
+  let s = 0;
+  for (let i = 0; i < px.length; i++) {
+    s += px[i]; if (i >= period) s -= px[i - period];
+    if (i >= period - 1) o[i] = (px[i] / (s / period) - 1) * 100;
+  }
+  return o;
+}
+
+const INDICATORS = [
+  { key: 'dev20', label: '20일 이격도', note: '20일 평균에서 얼마나 벗어났나' },
+  { key: 'rsi14', label: 'RSI(14)', note: '최근 상승분과 하락분의 비율' },
+  { key: 'bollinger', label: '볼린저 %B(20)', note: '20일 밴드 안에서의 위치' },
+  { key: 'dev60', label: '60일 이격도', note: '60일 평균에서 얼마나 벗어났나' },
+  { key: 'dev1250', label: '5년 이격도 (이 지표)', note: '이 페이지가 쓰는 잣대' },
+];
+const RAW = {
+  dev20: devN(20), rsi14: rsi(14), bollinger: bollingerPctB(20, 2),
+  dev60: devN(60), dev1250: devN(MA),
+};
+
+const indicators = INDICATORS.map(({ key, label, note }) => {
+  const pct = expandingPct(RAW[key]);
+  const buckets = Array.from({ length: 5 }, () => ({ up: 0, n: 0 }));
+  for (let i = 0; i + 1 < px.length; i++) {
+    if (pct[i] === null) continue;
+    const b = buckets[Math.min(Math.floor(pct[i] / 20), 4)];
+    if (px[i + 1] > px[i]) b.up++;
+    b.n++;
+  }
+  const total = buckets.reduce((s, b) => s + b.n, 0);
+  const totalUp = buckets.reduce((s, b) => s + b.up, 0);
+  const base = (totalUp / total) * 100;
+  const rates = buckets.map((b) => (b.n ? Math.round((b.up / b.n) * 1000) / 10 : null));
+  const top = buckets[4];
+  const se = Math.sqrt(((base / 100) * (1 - base / 100)) / top.n) * 100;
+  return {
+    key, label, note, rates, n: total,
+    base: Math.round(base * 10) / 10,
+    topRate: rates[4],
+    z: Math.round(((rates[4] - base) / se) * 10) / 10,
+  };
+});
+console.log('\n기술적 지표 — 다음 거래일 상승 확률 (확장창 백분위, 룩어헤드 차단)');
+for (const d of indicators) {
+  console.log(`  ${d.label.padEnd(20)} 하위20% ${String(d.rates[0]).padStart(5)}% → 상위20% ${String(d.topRate).padStart(5)}%  z=${d.z}  n=${d.n.toLocaleString('ko-KR')}`);
+}
+
 const byBlock = {};
 for (const block of BLOCKS) {
   const t0 = Date.now();
@@ -144,6 +233,7 @@ writeFileSync('data/bootstrap.json', JSON.stringify({
   reps: REPS, seed: SEED, blocks: BLOCKS, primaryBlock: 252, pairs: n,
   byBlock,
   uncertainRange, // [최소, 최대] 부호 미확정 구간 수
+  indicators,
 }));
 console.log(`\n부호 미확정 구간 수: 블록에 따라 ${uncertainRange[0]}~${uncertainRange[1]}개`);
 console.log('data/bootstrap.json 저장');

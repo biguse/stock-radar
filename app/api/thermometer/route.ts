@@ -98,6 +98,10 @@ async function build() {
   const boot = bootstrapData as unknown as {
     reps: number; blocks: number[]; primaryBlock: number; builtAt: string;
     uncertainRange: number[];
+    indicators?: Array<{
+      key: string; label: string; note: string;
+      rates: (number | null)[]; n: number; base: number; topRate: number; z: number;
+    }>;
     byBlock: Record<string, Array<{
       from: number; to: number; medianLow: number; medianHigh: number;
       negLow: number; negHigh: number; signCertain: boolean; validReps: number;
@@ -108,6 +112,7 @@ async function build() {
     reps: boot.reps, blocks: boot.blocks, primaryBlock: boot.primaryBlock,
     builtAt: boot.builtAt, uncertainRange: boot.uncertainRange,
   };
+  const indicators = boot.indicators ?? [];
   const dividend = averageDividendYield(rows);
   const honest = nonOverlappingValidation(series);
   const scorecard = walkForwardScorecard(series);
@@ -324,6 +329,7 @@ async function build() {
     buckets,
     bucketCI,
     bootstrapMeta,
+    indicators,
     dividend,
     validation,
     honest: { correlation: honest.correlation, n: honest.n, points: honest.points },

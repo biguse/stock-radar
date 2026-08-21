@@ -55,7 +55,13 @@ type BootstrapMeta = {
   builtAt: string; uncertainRange: number[];
 };
 
+type Indicator = {
+  key: string; label: string; note: string;
+  rates: (number | null)[]; n: number; base: number; topRate: number; z: number;
+};
+
 type ApiResponse = {
+  indicators?: Indicator[];
   bucketCI?: BucketCI[];
   bootstrapMeta?: BootstrapMeta;
   dividend?: { avg: number; from: string | null };
@@ -153,6 +159,7 @@ export default function ThermometerPage() {
             <Gauges gauges={data.gauges} kospi={data.current.kospi} />
             <Tomorrow probability={data.probability} />
             <BreakEven cost={data.cost} />
+            <Indicators indicators={data.indicators} cost={data.cost} />
             <Dividend dividend={data.dividend} />
             <Quote quote={data.current.quote} />
             <Outcome
@@ -624,6 +631,75 @@ function BreakEven({ cost }: { cost?: CostInfo }) {
         농어촌특별세 0.15% + 위탁수수료 0.03% + 슬리피지 0.05%), 국내 주식형 ETF 왕복{' '}
         {cost.assumptions.etfPct}%(거래세 면제, 호가 스프레드는 종목·시간대에 따라 크게 달라집니다).
         증권사와 종목에 따라 달라집니다.
+      </p>
+    </section>
+  );
+}
+
+function Indicators({ indicators, cost }: { indicators?: Indicator[]; cost?: CostInfo }) {
+  if (!indicators || indicators.length === 0) return null;
+  const best = indicators.reduce((a, b) => (b.topRate > a.topRate ? b : a));
+  const breakEven = cost?.holdings.find((h) => h.days === 1)?.breakEvenStock ?? 0;
+  const short = Math.round((breakEven - best.topRate) * 10) / 10;
+
+  return (
+    <section className="mt-14 border-t border-neutral-200 pt-8">
+      <h2 className="text-[1.45rem] font-bold leading-[1.4] tracking-tight text-neutral-900">
+        볼린저 밴드나 RSI는 어떤가
+      </h2>
+      <p className="mt-3 text-[15px] leading-relaxed text-neutral-700">
+        가장 널리 쓰이는 기술적 지표들을 같은 방식으로 시험했습니다. 지표 값이 높았던 날과 낮았던
+        날을 나눠, <strong className="font-semibold">다음 거래일에 실제로 올랐는지</strong>를 세었습니다.
+      </p>
+
+      <div className="mt-6 space-y-3.5">
+        {indicators.map((d) => (
+          <div key={d.key}>
+            <div className="flex items-baseline justify-between text-[13px]">
+              <span className="font-semibold text-neutral-900">{d.label}</span>
+              <span className="tabular-nums text-neutral-500">
+                낮을 때 {d.rates[0]}% → 높을 때{' '}
+                <strong className="font-semibold text-neutral-900">{d.topRate}%</strong>
+              </span>
+            </div>
+            <div className="relative mt-1.5 h-[10px] bg-neutral-100">
+              <div className="h-full bg-neutral-800" style={{ width: `${d.topRate}%` }} />
+              {breakEven > 0 ? (
+                <div
+                  className="absolute top-[-3px] h-[16px] w-[2px] bg-red-700"
+                  style={{ left: `${breakEven}%` }}
+                />
+              ) : null}
+            </div>
+            <div className="mt-1 text-[11px] text-neutral-400">{d.note}</div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-[11px] text-neutral-400">
+        막대는 지표가 가장 높았던 5분의 1 구간의 다음날 상승 비율, 빨간 선은 본전에 필요한 승률
+        {breakEven > 0 ? ` ${breakEven}%` : ''}입니다.
+      </p>
+
+      <div className="mt-7 space-y-3 text-[15px] leading-relaxed text-neutral-800">
+        <p>
+          <strong className="font-semibold">우연이 아닙니다.</strong> 표본이 8,600일이 넘고, 지표가
+          높았던 날의 상승 비율은 통계적으로 뚜렷하게 높습니다. 기술적 지표에 정보가 담겨 있는 것은
+          사실입니다.
+        </p>
+        <p>
+          <strong className="font-semibold">그런데 방향이 통념과 반대입니다.</strong> “RSI가 높으면
+          과매수라 곧 떨어진다”가 상식이지만, 실제로는 지표가 높았던 날일수록 다음날 더 올랐습니다.
+        </p>
+        <p>
+          그리고 가장 좋았던 {best.label}조차{' '}
+          <strong className="font-semibold">{best.topRate}%</strong>입니다. 본전에 필요한{' '}
+          <strong className="font-semibold">{breakEven}%</strong>에{' '}
+          <strong className="font-semibold">{short}%p 못 미칩니다.</strong>
+        </p>
+      </div>
+
+      <p className="mt-6 border-l-2 border-neutral-900 pl-4 text-[15px] font-medium leading-relaxed text-neutral-900">
+        지표가 틀린 게 아닙니다. 지표에 담긴 정보의 양이 세금과 수수료보다 작을 뿐입니다.
       </p>
     </section>
   );
