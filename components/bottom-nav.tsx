@@ -11,6 +11,7 @@ type NavItem = {
 
 const ITEMS: NavItem[] = [
   { href: '/', label: '워치', icon: '🏠' },
+  { href: '/thermometer', label: '온도', icon: '🌡️' },
   { href: '/genius', label: '거장', icon: '🎯' },
   { href: '/screener', label: '스크리너', icon: '💡' },
   { href: '/trending', label: '오늘', icon: '🔥' },
