@@ -20,6 +20,8 @@ export type MarketRow = {
   per?: number | null;
   /** 코스피 지수 PBR (KRX, 2002.4~) */
   pbr?: number | null;
+  /** 한국 국고채 장기금리 % (FRED INTGSBKRM193N) */
+  kr10y?: number | null;
 };
 
 export type AxisKey = 'price' | 'fear' | 'fx' | 'rate' | 'real';

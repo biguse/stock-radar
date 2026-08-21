@@ -64,18 +64,61 @@ export async function GET() {
     cape.push(cnt > MA * 0.6 ? rows[i].kospi / (acc / cnt) : null);
   }
 
+  // 후보 5: 주식 위험 프리미엄 = 이익수익률(1/PER) - 국고채 금리
+  //   거장들이 실제로 보는 것. 높을수록 주식이 후하게 보상 = 차갑다 → invert
+  const erp = rows.map((r) =>
+    r.per && r.per > 0 && r.kr10y !== null && r.kr10y !== undefined
+      ? (100 / r.per) - r.kr10y
+      : null,
+  );
+
   const candidates: { key: string; label: string; raw: (number | null)[] }[] = [
     { key: 'dev', label: '5년평균 이격도 (현재)', raw: dev },
     { key: 'per', label: 'PER', raw: per },
     { key: 'pbr', label: 'PBR', raw: pbr },
     { key: 'cape', label: 'CAPE-lite(5년)', raw: cape },
+    { key: 'erp', label: '위험프리미엄(1/PER-금리)', raw: erp },
   ];
 
   const horizons = [252, 504];
 
+  // 각 후보 점수들이 서로 얼마나 겹치는가 (= 새 정보가 있는가)
+  const scoreMap: Record<string, (number | null)[]> = {};
+  for (const c of candidates)
+    scoreMap[c.key] = expandingPercentileSeries(c.raw, { warmup: 750, invert: c.key === 'erp' });
+  function pairCorr(a: string, b: string) {
+    const xs: number[] = [], ys: number[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      const x = scoreMap[a][i], y = scoreMap[b][i];
+      if (x === null || y === null) continue;
+      xs.push(x); ys.push(y);
+    }
+    return { correlation: corr(xs, ys), n: xs.length };
+  }
+  // 온도가 코스피 지수 자체와 얼마나 같은가 (일간 변화 기준)
+  const tempVsKospiDaily = (() => {
+    const xs: number[] = [], ys: number[] = [];
+    for (let i = 1; i < rows.length; i++) {
+      const a = scoreMap['dev'][i], b = scoreMap['dev'][i - 1];
+      if (a === null || b === null) continue;
+      xs.push(a - b);
+      ys.push(((rows[i].kospi - rows[i - 1].kospi) / rows[i - 1].kospi) * 100);
+    }
+    return { correlation: corr(xs, ys), n: xs.length };
+  })();
+
   return NextResponse.json({
+    overlap: {
+      'dev↔pbr': pairCorr('dev', 'pbr'),
+      'dev↔per': pairCorr('dev', 'per'),
+      'pbr↔per': pairCorr('pbr', 'per'),
+      'dev↔cape': pairCorr('dev', 'cape'),
+      'dev↔erp': pairCorr('dev', 'erp'),
+      'pbr↔erp': pairCorr('pbr', 'erp'),
+      온도일간변화_vs_코스피일간변화: tempVsKospiDaily,
+    },
     result: candidates.map((c) => {
-      const scores = expandingPercentileSeries(c.raw, { warmup: 750 });
+      const scores = scoreMap[c.key];
       const latestIdx = (() => {
         for (let i = scores.length - 1; i >= 0; i--) if (scores[i] !== null) return i;
         return -1;
