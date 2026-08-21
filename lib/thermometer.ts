@@ -167,15 +167,18 @@ export function computeTemperatureSeries(rows: MarketRow[]): DayTemperature[] {
     let ready = true;
 
     (Object.keys(AXIS_WEIGHTS) as AxisKey[]).forEach((key) => {
+      // 온도에 실제로 쓰이는 축만 그날의 유효성을 좌우한다.
+      // (맥락축은 가중치 0이므로 결측이어도 그날을 버릴 이유가 없다)
+      const required = TEMPERATURE_AXES.includes(key);
       const raw = rawByAxis[key];
       if (raw === null || !Number.isFinite(raw)) {
-        ready = false;
+        if (required) ready = false;
         return;
       }
       const sample = samples[key];
       if (sample.length < WARMUP) {
         insertSorted(sample, raw);
-        ready = false;
+        if (required) ready = false;
         return;
       }
       const pct = percentileRank(sample, raw);
@@ -389,7 +392,14 @@ export type Scorecard = {
   entries: ScorecardEntry[];
   n: number;
   hitRate: number;
-  coinFlipGap: number; // 동전던지기(50%) 대비 몇 %p
+  /**
+   * 같은 평가 시점들에서 실제로 1년 뒤 올랐던 비율.
+   * 1년 지평의 올바른 기준선은 50%가 아니라 이 값이다. 주식시장에는
+   * 상승 편향이 있어서, 아무 분석 없이 "오른다"고만 해도 이만큼 맞는다.
+   */
+  baselineAlwaysUp: number;
+  /** 기준선 대비 몇 %p. 음수면 분석이 오히려 해가 됐다는 뜻 */
+  edgeVsBaseline: number;
   meanAbsError: number;
 };
 
@@ -438,6 +448,8 @@ export function walkForwardScorecard(
   const n = entries.length;
   const hits = entries.filter((e) => e.directionHit).length;
   const hitRate = n === 0 ? 0 : Math.round((hits / n) * 1000) / 10;
+  const ups = entries.filter((e) => e.actualReturn >= 0).length;
+  const baselineAlwaysUp = n === 0 ? 0 : Math.round((ups / n) * 1000) / 10;
   const mae =
     n === 0
       ? 0
@@ -449,7 +461,8 @@ export function walkForwardScorecard(
     entries,
     n,
     hitRate,
-    coinFlipGap: Math.round((hitRate - 50) * 10) / 10,
+    baselineAlwaysUp,
+    edgeVsBaseline: Math.round((hitRate - baselineAlwaysUp) * 10) / 10,
     meanAbsError: mae,
   };
 }

@@ -123,15 +123,21 @@ function forwardFill(map, dates, maxGapDays = 10) {
   return out;
 }
 
-/** 월간 수출 → 전년동월비 % */
+/**
+ * 월간 수출 → 전년동월비 %.
+ * 관측월 M의 수출은 M+1월 1일에야 발표된다. 관측월 날짜 그대로 쓰면
+ * 과거 시점에서 알 수 없던 값을 쓰는 룩어헤드가 된다. 키를 한 달 뒤로 민다.
+ */
 function toYoY(monthlyMap) {
   const yoy = new Map();
   for (const [d, v] of monthlyMap) {
     const prev = new Date(d);
     prev.setFullYear(prev.getFullYear() - 1);
-    const key = prev.toISOString().slice(0, 10);
-    const pv = monthlyMap.get(key);
-    if (pv && pv > 0) yoy.set(d, Math.round(((v - pv) / pv) * 1000) / 10);
+    const pv = monthlyMap.get(prev.toISOString().slice(0, 10));
+    if (!pv || pv <= 0) continue;
+    const known = new Date(d); // 발표 지연
+    known.setMonth(known.getMonth() + 1);
+    yoy.set(known.toISOString().slice(0, 10), Math.round(((v - pv) / pv) * 1000) / 10);
   }
   return yoy;
 }

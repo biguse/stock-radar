@@ -30,12 +30,15 @@ type HoldingStat = {
   days: number; label: string; winRate: number;
   avgGain: number; avgLoss: number;
   breakEvenStock: number; breakEvenEtf: number; edgeStock: number;
-  annualCostStock: number; annualCostEtf: number;
+  annualCostStock: number; annualCostEtf: number; annualDrawdownStock: number;
 };
+
+type PayoffCase = { label: string; gain: number; loss: number; breakEven: number };
 
 type CostInfo = {
   holdings: HoldingStat[];
   medallionWinRate: number;
+  payoff: PayoffCase[];
   assumptions: { stockPct: number; etfPct: number };
 };
 
@@ -48,7 +51,11 @@ type ApiResponse = {
   myBucket: Bucket | null;
   coverage: { from: string | null; to: string | null };
   honest: { correlation: number; n: number };
-  scorecard: { n: number; hitRate: number; coinFlipGap: number; meanAbsError: number };
+  scorecard: {
+    n: number; hitRate: number;
+    baselineAlwaysUp: number; edgeVsBaseline: number;
+    meanAbsError: number;
+  };
   error?: string;
 };
 
@@ -461,8 +468,9 @@ function BreakEven({ cost }: { cost?: CostInfo }) {
         얼마나 맞혀야 이길 수 있나
       </h2>
       <p className="mt-3 text-[15px] leading-relaxed text-neutral-700">
-        매일 사고파는 사람은 <strong className="font-semibold">{daily.breakEvenStock}%</strong>를 맞혀야
-        겨우 본전입니다. 세금과 수수료를 내고 나면 그렇습니다. 그런데 시장이 실제로 주는 건{' '}
+        코스피가 오르내리는 폭 그대로 매일 사고파는 사람은{' '}
+        <strong className="font-semibold">{daily.breakEvenStock}%</strong>를 맞혀야 겨우 본전입니다.
+        세금과 수수료를 내고 나면 그렇습니다. 그런데 시장이 실제로 주는 건{' '}
         <strong className="font-semibold">{daily.winRate}%</strong>입니다.
       </p>
 
@@ -512,6 +520,35 @@ function BreakEven({ cost }: { cost?: CostInfo }) {
         <strong className="font-semibold">예측력의 차이가 아니라 비용 구조의 차이입니다.</strong>
       </p>
 
+      <div className="mt-8 border border-neutral-300 p-5">
+        <div className="text-[13px] font-semibold text-neutral-900">
+          다만 이 숫자는 “손익 크기가 시장 평균과 같을 때”의 값입니다
+        </div>
+        <p className="mt-2 text-[12px] leading-relaxed text-neutral-500">
+          손절과 익절로 이익·손실의 크기를 바꾸면 필요한 승률도 달라집니다. 같은 비용에서도 이렇습니다.
+        </p>
+        <div className="mt-3 space-y-1.5">
+          {cost.payoff.map((c) => (
+            <div key={c.label} className="flex items-baseline justify-between text-[12px]">
+              <span className="text-neutral-600">
+                {c.label}
+                <span className="ml-1.5 text-[11px] text-neutral-400">
+                  (+{c.gain}% / −{c.loss}%)
+                </span>
+              </span>
+              <span className="tabular-nums font-semibold text-neutral-900">{c.breakEven}%</span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-[12px] leading-relaxed text-neutral-500">
+          그래서 “매일 매매하면 무조건 진다”고는 말할 수 없습니다. 정확히는{' '}
+          <strong className="font-semibold text-neutral-700">
+            시장과 같은 손익 크기로 매일 전액을 굴리면 진다
+          </strong>
+          는 뜻입니다.
+        </p>
+      </div>
+
       <div className="mt-7 bg-neutral-50 p-5">
         <div className="text-[13px] font-semibold text-neutral-900">매매를 자주 할수록 나가는 돈</div>
         <div className="mt-3 space-y-1.5">
@@ -528,14 +565,17 @@ function BreakEven({ cost }: { cost?: CostInfo }) {
         <p className="mt-3 text-[12px] leading-relaxed text-neutral-500">
           매일 사고팔면 1년에 원금의{' '}
           <strong className="font-semibold text-neutral-800">{daily.annualCostStock}%</strong>가 세금과
-          수수료로 빠져나갑니다. 수익을 내기 전에 이미 절반이 사라집니다.
+          수수료로 빠져나갑니다. 남은 돈에 계속 물리는 방식으로 계산하면 원금이{' '}
+          <strong className="font-semibold text-neutral-800">{daily.annualDrawdownStock}%</strong>{' '}
+          줄어듭니다. 수익을 내기 전에 이미 절반이 사라집니다.
         </p>
       </div>
 
       <p className="mt-5 text-[11px] leading-relaxed text-neutral-400">
-        비용 가정 — 개별주식 왕복 {cost.assumptions.stockPct}%(증권거래세 0.15% + 위탁수수료 0.03% +
-        슬리피지 0.05%), 국내 주식형 ETF 왕복 {cost.assumptions.etfPct}%(거래세 면제). 증권사와 종목에
-        따라 달라집니다. 손익분기 승률은 코스피 실제 등락폭 분포로 계산했습니다.
+        비용 가정 — 개별주식 왕복 {cost.assumptions.stockPct}%(2026년 1월 인상된 증권거래세 0.05% +
+        농어촌특별세 0.15% + 위탁수수료 0.03% + 슬리피지 0.05%), 국내 주식형 ETF 왕복{' '}
+        {cost.assumptions.etfPct}%(거래세 면제, 호가 스프레드는 종목·시간대에 따라 크게 달라집니다).
+        증권사와 종목에 따라 달라집니다.
       </p>
     </section>
   );
@@ -601,9 +641,11 @@ function Outcome({ bucket, trendScore }: { bucket: Bucket; trendScore: number })
       </p>
       <p className="mt-4 border-l-2 border-neutral-300 pl-4 text-[12px] leading-relaxed text-neutral-500">
         다만 {bucket.n.toLocaleString('ko-KR')}일이라는 숫자를 표본 크기로 읽으면 안 됩니다. 1년짜리
-        창이 서로 364일씩 겹치기 때문에, 실제로 서로 다른 시기는{' '}
-        <strong className="font-semibold text-neutral-700">약 {bucket.independentYears}년치</strong>에
-        불과합니다. 근거는 보기보다 얇습니다.
+        창이 서로 364일씩 겹치기 때문에, 서로 다른 시기는{' '}
+        <strong className="font-semibold text-neutral-700">대략 {bucket.independentYears}년어치</strong>{' '}
+        정도입니다(정확한 유효 표본 수는 아니고 겹침의 크기를 가늠하는 값입니다). 블록 부트스트랩으로
+        구간을 잡으면 중앙값의 부호조차 확정되지 않는 구간이 대부분입니다.{' '}
+        <strong className="font-semibold text-neutral-700">위 숫자들을 정밀한 값으로 읽지 마세요.</strong>
       </p>
     </section>
   );
@@ -611,28 +653,57 @@ function Outcome({ bucket, trendScore }: { bucket: Bucket; trendScore: number })
 
 function Honesty({ data }: { data: ApiResponse }) {
   const s = data.scorecard;
+  const worse = s.edgeVsBaseline < 0;
+
   return (
     <section className="mt-14 border-2 border-neutral-900 px-6 py-7">
-      <h2 className="text-[15px] font-bold tracking-tight">이 지표도 자주 틀립니다</h2>
-      <p className="mt-2 text-[13px] leading-relaxed text-neutral-500">
+      <h2 className="text-[1.45rem] font-bold leading-[1.4] tracking-tight text-neutral-900">
+        {worse ? '이 지표는 아무것도 안 하는 것보다 못했습니다' : '이 지표도 자주 틀립니다'}
+      </h2>
+      <p className="mt-3 text-[13px] leading-relaxed text-neutral-500">
         지난 {s.n}번의 기록을, 그때 알 수 있었던 정보만으로 다시 채점했습니다.
       </p>
 
       <div className="mt-6 flex items-end gap-8">
         <div>
-          <div className="text-[11px] text-neutral-400">오를지 내릴지</div>
-          <div className="mt-1 text-[34px] font-bold leading-none tabular-nums">{s.hitRate}%</div>
-          <div className="mt-1 text-[11px] text-neutral-400">동전던지기는 50%</div>
+          <div className="text-[11px] text-neutral-400">이 지표의 적중률</div>
+          <div className="mt-1 text-[32px] font-bold leading-none tabular-nums text-neutral-900">
+            {s.hitRate}%
+          </div>
         </div>
         <div>
-          <div className="text-[11px] text-neutral-400">폭은 평균</div>
-          <div className="mt-1 text-[34px] font-bold leading-none tabular-nums">
-            {s.meanAbsError}
-            <span className="text-lg">%p</span>
+          <div className="text-[11px] text-neutral-400">그냥 “오른다”고 찍기</div>
+          <div className="mt-1 text-[32px] font-bold leading-none tabular-nums text-neutral-900">
+            {s.baselineAlwaysUp}%
           </div>
-          <div className="mt-1 text-[11px] text-neutral-400">빗나감</div>
         </div>
       </div>
+
+      <div className="mt-4 flex h-[10px] w-full bg-neutral-100">
+        <div className="h-full bg-neutral-800" style={{ width: `${s.hitRate}%` }} />
+      </div>
+      <div className="relative h-[14px]">
+        <div
+          className="absolute top-0 h-[10px] w-[2px] bg-red-700"
+          style={{ left: `${s.baselineAlwaysUp}%` }}
+        />
+      </div>
+
+      <p className="mt-5 text-[16px] leading-relaxed text-neutral-800">
+        분석을 하나도 하지 않고 <strong className="font-semibold">언제나 “오른다”</strong>고만 답해도{' '}
+        {s.baselineAlwaysUp}%를 맞힙니다. 주식시장에는 오르는 쪽으로 기운 편향이 있기 때문입니다. 이
+        지표는 그보다{' '}
+        <strong className="font-semibold">{Math.abs(s.edgeVsBaseline)}%p {worse ? '낮았습니다' : '높았습니다'}</strong>.
+      </p>
+      <p className="mt-3 text-[14px] leading-relaxed text-neutral-600">
+        {worse
+          ? '분석이 도움이 된 게 아니라 오히려 방해가 됐다는 뜻입니다. 1년 앞을 두고 50%를 기준으로 삼는 것은 잘못된 비교였고, 우리는 그 잘못된 비교로 이 지표가 동전보다 낫다고 적어두었습니다. 외부 검증에서 지적받아 바로잡았습니다.'
+          : '다만 이 차이도 표본이 겹쳐 있어 통계적으로 확정할 수 없습니다.'}
+      </p>
+
+      <p className="mt-5 text-[14px] leading-relaxed text-neutral-600">
+        예상한 폭도 평균 <strong className="font-semibold">{s.meanAbsError}%p</strong> 빗나갔습니다.
+      </p>
 
       <p className="mt-6 border-t border-neutral-200 pt-5 text-[14px] leading-relaxed text-neutral-700">
         1997년 9월과 1998년 7월은 거의 같은 <strong className="font-semibold">20도</strong>였습니다. 1년 뒤

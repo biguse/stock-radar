@@ -78,12 +78,16 @@ async function main() {
   ]);
 
   // 수출 전년동월비
+  // 관측월 M의 수출은 M+1월 1일에야 발표된다 (룩어헤드 방지)
   const expYoY = new Map();
   for (const [d, v] of exports) {
     const prev = new Date(d);
     prev.setFullYear(prev.getFullYear() - 1);
     const pv = exports.get(prev.toISOString().slice(0, 10));
-    if (pv && pv > 0) expYoY.set(d, Math.round(((v - pv) / pv) * 1000) / 10);
+    if (!pv || pv <= 0) continue;
+    const known = new Date(d);
+    known.setMonth(known.getMonth() + 1);
+    expYoY.set(known.toISOString().slice(0, 10), Math.round(((v - pv) / pv) * 1000) / 10);
   }
 
   const added = [];

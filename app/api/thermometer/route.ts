@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import historyData from '@/data/market-history.json';
-import { holdingStats, MEDALLION_WIN_RATE, COST } from '@/lib/trading-cost';
+import { holdingStats, payoffSensitivity, MEDALLION_WIN_RATE, COST } from '@/lib/trading-cost';
 import {
   expandingPercentileSeries,
   buildBuckets,
@@ -260,6 +260,7 @@ async function build() {
   const cost = {
     holdings: holdingStats(rows.map((r) => r.kospi)),
     medallionWinRate: MEDALLION_WIN_RATE,
+    payoff: payoffSensitivity(),
     assumptions: {
       stockPct: Math.round(COST.stock * 10000) / 100,
       etfPct: Math.round(COST.etf * 10000) / 100,
