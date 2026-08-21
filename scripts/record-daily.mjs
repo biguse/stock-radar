@@ -8,11 +8,12 @@
  */
 import * as cheerio from 'cheerio';
 import iconv from 'iconv-lite';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
 const FILE = 'data/market-history.json';
+const VALUATION_FILE = 'data/krx-valuation.json';
 
 async function recentKospi() {
   const res = await fetch('https://finance.naver.com/sise/sise_index_day.naver?code=KOSPI&page=1', {
@@ -66,13 +67,14 @@ async function main() {
   const known = new Set(payload.rows.map((r) => r.d));
   const lastDate = payload.rows[payload.rows.length - 1].d;
 
-  const [kospi, vix, fx, y10, spread, exports] = await Promise.all([
+  const [kospi, vix, fx, y10, spread, exports, kr10y] = await Promise.all([
     recentKospi(),
     fredRecent('VIXCLS'),
     fredRecent('DEXKOUS'),
     fredRecent('DGS10'),
     fredRecent('T10Y2Y'),
     fredRecent('XTEXVA01KRM667S', 800),
+    fredRecent('INTGSBKRM193N', 800), // 한국 국고채 장기금리 (월간)
   ]);
 
   // 수출 전년동월비
@@ -95,22 +97,40 @@ async function main() {
       y10: asOf(y10, d, 10),
       spread: asOf(spread, d, 10),
       expYoY: asOf(expYoY, d, 100),
+      kr10y: asOf(kr10y, d, 100),
+      per: null,
+      pbr: null,
     });
-  }
-
-  if (added.length === 0) {
-    console.log(`추가할 신규 거래일 없음 (마지막 ${lastDate})`);
-    return;
   }
 
   payload.rows.push(...added);
   payload.rows.sort((a, b) => a.d.localeCompare(b.d));
+
+  // KRX 밸류에이션(PER/PBR) 병합 — 파이썬 스크립트가 먼저 갱신해 둔 파일을 읽는다
+  let merged = 0;
+  if (existsSync(VALUATION_FILE)) {
+    const val = JSON.parse(readFileSync(VALUATION_FILE, 'utf-8'));
+    for (const r of payload.rows) {
+      const v = val[r.d];
+      if (!v) continue;
+      const nextPer = v.per ?? null;
+      const nextPbr = v.pbr ?? null;
+      if (r.per !== nextPer || r.pbr !== nextPbr) merged++;
+      r.per = nextPer;
+      r.pbr = nextPbr;
+    }
+  }
+
+  if (added.length === 0 && merged === 0) {
+    console.log(`변경 없음 (마지막 거래일 ${lastDate})`);
+    return;
+  }
   payload.updatedAt = new Date().toISOString().slice(0, 10);
   writeFileSync(FILE, JSON.stringify(payload));
 
-  console.log(`${added.length}일 추가:`);
+  console.log(`신규 ${added.length}일 · PER/PBR 갱신 ${merged}건`);
   for (const r of added) {
-    console.log(`  ${r.d} KOSPI ${r.kospi.toLocaleString()} VIX ${r.vix} 환율 ${r.fx}`);
+    console.log(`  ${r.d} KOSPI ${r.kospi.toLocaleString()} VIX ${r.vix} 환율 ${r.fx} PER ${r.per ?? '-'} PBR ${r.pbr ?? '-'}`);
   }
   console.log(`총 ${payload.rows.length}일 (${payload.rows[0].d} ~ ${payload.rows[payload.rows.length - 1].d})`);
 }

@@ -26,20 +26,36 @@ jobs:
           node-version: '24'
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-      - name: Append today's market row
+      - name: Install dependencies
+        run: |
+          npm ci
+          pip install --quiet pykrx
+
+      # KRX 로그인이 막히거나 형식이 바뀌어도 코스피·FRED 기록은 계속되어야 하므로
+      # 이 단계만 실패를 허용한다. PER/PBR은 다음 실행에서 따라잡는다.
+      - name: Update KOSPI valuation (KRX)
+        continue-on-error: true
+        env:
+          KRX_ID: ${{ secrets.KRX_ID }}
+          KRX_PW: ${{ secrets.KRX_PW }}
+        run: python scripts/fetch-krx-valuation.py
+
+      - name: Append market row and merge valuation
         run: node scripts/record-daily.mjs
 
       - name: Commit if changed
         run: |
-          if git diff --quiet -- data/market-history.json; then
+          if git diff --quiet -- data/; then
             echo "변경 없음 — 커밋 생략"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/market-history.json
+          git add data/market-history.json data/krx-valuation.json
           git commit -m "chore: 시장 데이터 일일 기록 $(date -u +%Y-%m-%d)"
           git push
