@@ -60,7 +60,22 @@ type Indicator = {
   rates: (number | null)[]; n: number; base: number; topRate: number; z: number;
 };
 
+type TrendSignal = {
+  key: string; label: string; state: string; detail: string;
+  overlapWithFiveYearDeviation: number;
+  history: { key: string; label: string; n: number; independentN: number;
+             medianReturn: number; negativeRate: number }[];
+  fairScore: { n: number; hitRate: number; baselineAlwaysUp: number; edgeVsBaseline: number };
+};
+
+type TechnicalSignals = {
+  asOf: string | null;
+  commonEvaluationFrom: string | null;
+  signals: TrendSignal[];
+};
+
 type ApiResponse = {
+  technicalSignals?: TechnicalSignals;
   indicators?: Indicator[];
   bucketCI?: BucketCI[];
   bootstrapMeta?: BootstrapMeta;
@@ -160,6 +175,7 @@ export default function ThermometerPage() {
             <Tomorrow probability={data.probability} />
             <BreakEven cost={data.cost} />
             <Indicators indicators={data.indicators} cost={data.cost} />
+            <TrendSignals tech={data.technicalSignals} />
             <Dividend dividend={data.dividend} />
             <Quote quote={data.current.quote} />
             <Outcome
@@ -702,6 +718,107 @@ function Indicators({ indicators, cost }: { indicators?: Indicator[]; cost?: Cos
       <p className="mt-6 border-l-2 border-neutral-900 pl-4 text-[15px] font-medium leading-relaxed text-neutral-900">
         지표가 틀린 게 아닙니다. 지표에 담긴 정보의 양이 세금과 수수료보다 작을 뿐입니다.
       </p>
+    </section>
+  );
+}
+
+/**
+ * 골든크로스·MACD를 1년 기간으로 시험한 결과.
+ *
+ * 표본이 32개뿐이라는 사실을 숫자보다 먼저 보여준다.
+ * 5번 섹션(다음날)은 표본 8,600일이라 순서를 바꿔도 되지만
+ * 여기서는 경고를 뒤로 미루면 오독을 부른다.
+ */
+function TrendSignals({ tech }: { tech?: TechnicalSignals }) {
+  if (!tech || tech.signals.length === 0) return null;
+  const n = tech.signals[0]?.fairScore.n ?? 0;
+  if (n === 0) return null;
+  const baseline = tech.signals[0].fairScore.baselineAlwaysUp;
+  const golden = tech.signals.find((x) => x.key === 'goldenCross');
+  const dead = golden?.history.find((h) => h.key === 'below');
+  const cross = golden?.history.find((h) => h.key === 'above');
+
+  return (
+    <section className="mt-14 border-t border-neutral-200 pt-8">
+      <h2 className="text-[1.45rem] font-bold leading-[1.4] tracking-tight text-neutral-900">
+        골든크로스는 어떤가
+      </h2>
+
+      <p className="mt-4 border-l-2 border-red-700 pl-4 text-[15px] leading-relaxed text-neutral-800">
+        <strong className="font-semibold">먼저 이 숫자의 한계부터.</strong> 아래는 표본이{' '}
+        <strong className="font-semibold">{n}개</strong>뿐입니다. 1년 뒤를 보려면 한 해가 온전히
+        지나야 하므로, 36년 기록에서도 겹치지 않는 표본은 이것밖에 나오지 않습니다. 차이 몇 %p는
+        한두 해가 바뀌면 뒤집힙니다.
+      </p>
+
+      <p className="mt-5 text-[15px] leading-relaxed text-neutral-700">
+        그 점을 감안하고 보면, 가장 유명한 매매 신호들을{' '}
+        <strong className="font-semibold">1년 뒤 방향</strong>으로 채점한 결과는 이렇습니다.
+        비교 대상은 아무 판단도 하지 않고 늘 오른다고 답하는 것입니다.
+      </p>
+
+      <div className="mt-6 space-y-3.5">
+        {tech.signals.map((sig) => (
+          <div key={sig.key}>
+            <div className="flex items-baseline justify-between text-[13px]">
+              <span className="font-semibold text-neutral-900">{sig.label}</span>
+              <span className="tabular-nums text-neutral-500">
+                맞힌 비율{' '}
+                <strong className="font-semibold text-neutral-900">{sig.fairScore.hitRate}%</strong>
+              </span>
+            </div>
+            <div className="relative mt-1.5 h-[10px] bg-neutral-100">
+              <div className="h-full bg-neutral-800" style={{ width: `${sig.fairScore.hitRate}%` }} />
+              <div
+                className="absolute top-[-3px] h-[16px] w-[2px] bg-red-700"
+                style={{ left: `${sig.fairScore.baselineAlwaysUp}%` }}
+              />
+            </div>
+            <div className="mt-1 text-[11px] text-neutral-400">
+              늘 오른다고 답할 때보다 {Math.abs(sig.fairScore.edgeVsBaseline)}%p{' '}
+              {sig.fairScore.edgeVsBaseline < 0 ? '나쁨' : '나음'}
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-[11px] text-neutral-400">
+        빨간 선이 아무 판단도 하지 않을 때의 성적 {baseline}%입니다. 막대가 선에 못 미치면
+        그 신호를 따르는 쪽이 손해였다는 뜻입니다.
+      </p>
+
+      <div className="mt-7 space-y-3 text-[15px] leading-relaxed text-neutral-800">
+        <p>
+          <strong className="font-semibold">셋 다 선에 못 미칩니다.</strong> 이 페이지가 쓰는
+          잣대도 마찬가지였습니다. 널리 쓰인다는 것과 잘 맞힌다는 것은 다른 이야기입니다.
+        </p>
+        {dead && cross ? (
+          <p>
+            <strong className="font-semibold">방향도 통념과 반대입니다.</strong> 50일선이 200일선을
+            아래로 뚫은 이른바 죽음의 십자가 상태에서 1년 뒤 중앙값이{' '}
+            <strong className="font-semibold">+{dead.medianReturn}%</strong>, 반대로 골든크로스
+            상태에서는 <strong className="font-semibold">+{cross.medianReturn}%</strong>였습니다.
+            나쁘다는 쪽이 오히려 나았습니다.
+          </p>
+        ) : null}
+        <p className="text-neutral-500">
+          다만 이 비교의 독립 표본은 각각 {dead?.independentN}개와 {cross?.independentN}개입니다.
+          동전을 열 몇 번 던진 것과 같아서, 이것으로 죽음의 십자가가 좋다고 말할 수는 없습니다.
+          말할 수 있는 것은 <strong className="font-semibold text-neutral-800">통념이 근거로
+          삼을 만큼 뚜렷하지는 않다</strong>는 것까지입니다.
+        </p>
+      </div>
+
+      <p className="mt-6 border-l-2 border-neutral-900 pl-4 text-[15px] font-medium leading-relaxed text-neutral-900">
+        유명한 신호일수록 이미 모두가 보고 있습니다. 모두가 보는 것에는 먼저 알 수 있는 것이
+        남아 있지 않습니다.
+      </p>
+
+      {tech.commonEvaluationFrom ? (
+        <p className="mt-4 text-[11px] text-neutral-400">
+          {tech.commonEvaluationFrom}부터 채점했습니다. 세 지표가 모두 값을 갖는 첫날에 맞춘
+          것으로, 지표마다 유리한 기간을 따로 쓰지 않기 위해서입니다.
+        </p>
+      ) : null}
     </section>
   );
 }
