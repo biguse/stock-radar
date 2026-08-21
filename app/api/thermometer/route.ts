@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import historyData from '@/data/market-history.json';
+import { holdingStats, MEDALLION_WIN_RATE, COST } from '@/lib/trading-cost';
 import {
   expandingPercentileSeries,
   buildBuckets,
@@ -256,6 +257,15 @@ async function build() {
     },
   };
 
+  const cost = {
+    holdings: holdingStats(rows.map((r) => r.kospi)),
+    medallionWinRate: MEDALLION_WIN_RATE,
+    assumptions: {
+      stockPct: Math.round(COST.stock * 10000) / 100,
+      etfPct: Math.round(COST.etf * 10000) / 100,
+    },
+  };
+
   const myBucket =
     current !== null
       ? buckets.find((b) => current!.temp >= b.from && current!.temp < b.to) ?? null
@@ -290,6 +300,7 @@ async function build() {
     gauges,
     range,
     probability,
+    cost,
     myBucket,
     buckets,
     validation,

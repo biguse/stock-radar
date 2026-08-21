@@ -23,7 +23,21 @@ type Probability = {
   tomorrowSpread: { min: number; max: number };
 };
 
+type HoldingStat = {
+  days: number; label: string; winRate: number;
+  avgGain: number; avgLoss: number;
+  breakEvenStock: number; breakEvenEtf: number; edgeStock: number;
+  annualCostStock: number; annualCostEtf: number;
+};
+
+type CostInfo = {
+  holdings: HoldingStat[];
+  medallionWinRate: number;
+  assumptions: { stockPct: number; etfPct: number };
+};
+
 type ApiResponse = {
+  cost?: CostInfo;
   probability?: Probability;
   current: { date: string; kospi: number; temp: number; label: string; quote: { who: string; line: string } } | null;
   gauges: Gauge[];
@@ -106,6 +120,7 @@ export default function ThermometerPage() {
             <Headline range={data.range} current={data.current} gauges={data.gauges} bucket={data.myBucket} />
             <Gauges gauges={data.gauges} kospi={data.current.kospi} />
             <Tomorrow probability={data.probability} />
+            <BreakEven cost={data.cost} />
             <Quote quote={data.current.quote} />
             <Outcome bucket={data.myBucket} trendScore={data.gauges.find((g) => g.key === 'trend')?.score ?? 0} />
             <Honesty data={data} />
@@ -428,6 +443,97 @@ function Tomorrow({ probability }: { probability?: Probability }) {
           정확히 언제인지는 휴장일에 따라 달라져 단정하지 않습니다.
         </p>
       ) : null}
+    </section>
+  );
+}
+
+function BreakEven({ cost }: { cost?: CostInfo }) {
+  if (!cost) return null;
+  const daily = cost.holdings.find((h) => h.days === 1);
+  if (!daily) return null;
+
+  return (
+    <section className="mt-14 border-t border-neutral-200 pt-8">
+      <h2 className="text-[1.45rem] font-bold leading-[1.4] tracking-tight text-neutral-900">
+        얼마나 맞혀야 이길 수 있나
+      </h2>
+      <p className="mt-3 text-[15px] leading-relaxed text-neutral-700">
+        매일 사고파는 사람은 <strong className="font-semibold">{daily.breakEvenStock}%</strong>를 맞혀야
+        겨우 본전입니다. 세금과 수수료를 내고 나면 그렇습니다. 그런데 시장이 실제로 주는 건{' '}
+        <strong className="font-semibold">{daily.winRate}%</strong>입니다.
+      </p>
+
+      <div className="mt-6 space-y-3">
+        {cost.holdings.map((h) => {
+          const ok = h.edgeStock >= 0;
+          return (
+            <div key={h.days}>
+              <div className="flex items-baseline justify-between text-[13px]">
+                <span className="font-semibold text-neutral-900">{h.label}마다 매매</span>
+                <span className="tabular-nums text-neutral-500">
+                  시장 {h.winRate}% / 필요 {h.breakEvenStock}%
+                  <span className={`ml-2 font-bold ${ok ? 'text-neutral-900' : 'text-red-700'}`}>
+                    {ok ? '+' : ''}
+                    {h.edgeStock}%p
+                  </span>
+                </span>
+              </div>
+              <div className="relative mt-1.5 h-[10px] bg-neutral-100">
+                <div
+                  className={`h-full ${ok ? 'bg-neutral-800' : 'bg-neutral-300'}`}
+                  style={{ width: `${Math.min(100, h.winRate)}%` }}
+                />
+                <div
+                  className="absolute top-[-3px] h-[16px] w-[2px] bg-red-700"
+                  style={{ left: `${Math.min(100, h.breakEvenStock)}%` }}
+                  title={`본전선 ${h.breakEvenStock}%`}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-3 text-[11px] text-neutral-400">
+        막대는 시장이 실제로 준 승률, 빨간 선은 본전에 필요한 승률입니다. 막대가 선을 넘지 못하면
+        구조적으로 집니다.
+      </p>
+
+      <p className="mt-7 text-[16px] leading-relaxed text-neutral-800">
+        세계에서 가장 성공한 헤지펀드로 꼽히는 메달리온의 승률은{' '}
+        <strong className="font-semibold">{cost.medallionWinRate}%</strong>로 알려져 있습니다. 거의
+        동전입니다. 그런데도 이긴 이유는 하루에 수십만 번을 반복했고, 스스로 시장을 만드는 쪽이라
+        거래비용이 거의 없었기 때문입니다.
+      </p>
+      <p className="mt-3 text-[15px] leading-relaxed text-neutral-800">
+        같은 승률이어도 개인은 집니다.{' '}
+        <strong className="font-semibold">예측력의 차이가 아니라 비용 구조의 차이입니다.</strong>
+      </p>
+
+      <div className="mt-7 bg-neutral-50 p-5">
+        <div className="text-[13px] font-semibold text-neutral-900">매매를 자주 할수록 나가는 돈</div>
+        <div className="mt-3 space-y-1.5">
+          {cost.holdings.map((h) => (
+            <div key={h.days} className="flex items-baseline justify-between text-[13px]">
+              <span className="text-neutral-500">{h.label}마다</span>
+              <span className="tabular-nums text-neutral-900">
+                연 <strong className="font-semibold">{h.annualCostStock}%</strong>
+                <span className="ml-2 text-[11px] text-neutral-400">ETF는 {h.annualCostEtf}%</span>
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-[12px] leading-relaxed text-neutral-500">
+          매일 사고팔면 1년에 원금의{' '}
+          <strong className="font-semibold text-neutral-800">{daily.annualCostStock}%</strong>가 세금과
+          수수료로 빠져나갑니다. 수익을 내기 전에 이미 절반이 사라집니다.
+        </p>
+      </div>
+
+      <p className="mt-5 text-[11px] leading-relaxed text-neutral-400">
+        비용 가정 — 개별주식 왕복 {cost.assumptions.stockPct}%(증권거래세 0.15% + 위탁수수료 0.03% +
+        슬리피지 0.05%), 국내 주식형 ETF 왕복 {cost.assumptions.etfPct}%(거래세 면제). 증권사와 종목에
+        따라 달라집니다. 손익분기 승률은 코스피 실제 등락폭 분포로 계산했습니다.
+      </p>
     </section>
   );
 }
