@@ -20,16 +20,29 @@ export type MarketRow = {
 
 export type AxisKey = 'price' | 'fear' | 'fx' | 'rate' | 'real';
 
+/**
+ * 온도에 실제로 반영되는 축.
+ *
+ * 처음엔 5축 가중 평균(40/25/15/10/10)이었으나, 겹치지 않는 표본으로
+ * 검증한 결과 5축 종합(-0.241)이 가격 단독(-0.298)보다 오히려 나빴다.
+ * VIX는 가정과 반대 부호(+0.119)로 나왔다. 근거 없는 가중치가 잡음을
+ * 더하고 있었으므로, 실증 근거가 있는 축 하나만 남긴다.
+ *
+ * 나머지 넷은 계산은 하되 온도에 넣지 않고 '오늘의 환경'으로만 보여준다.
+ */
+export const TEMPERATURE_AXES: AxisKey[] = ['price'];
+export const CONTEXT_AXES: AxisKey[] = ['fear', 'real', 'fx', 'rate'];
+
 export const AXIS_WEIGHTS: Record<AxisKey, number> = {
-  price: 40, // 가격 위치 — 실증 근거가 가장 강한 축
-  fear: 25, // 심리 (VIX)
-  real: 15, // 실물 (수출)
-  fx: 10, // 환율
-  rate: 10, // 금리
+  price: 100,
+  fear: 0,
+  real: 0,
+  fx: 0,
+  rate: 0,
 };
 
 export const AXIS_META: Record<AxisKey, { label: string; unit: string; hot: string; cold: string }> = {
-  price: { label: '가격', unit: '%', hot: '장기 추세보다 크게 위', cold: '장기 추세보다 크게 아래' },
+  price: { label: '상승 폭', unit: '%', hot: '장기 추세보다 크게 위', cold: '장기 추세보다 크게 아래' },
   fear: { label: '심리', unit: '', hot: 'VIX 낮음 = 방심', cold: 'VIX 높음 = 공포' },
   real: { label: '실물', unit: '%', hot: '수출 증가', cold: '수출 감소' },
   fx: { label: '환율', unit: '원', hot: '원화 강세', cold: '원화 약세 = 자금 이탈 압력' },
@@ -140,8 +153,10 @@ export function computeTemperatureSeries(rows: MarketRow[]): DayTemperature[] {
       const score = invertAxis[key] ? 100 - pct : pct;
       insertSorted(sample, raw);
       axes.push({ key, raw, score });
-      weighted += score * AXIS_WEIGHTS[key];
-      usedWeight += AXIS_WEIGHTS[key];
+      if (TEMPERATURE_AXES.includes(key)) {
+        weighted += score * AXIS_WEIGHTS[key];
+        usedWeight += AXIS_WEIGHTS[key];
+      }
     });
 
     if (!ready || usedWeight === 0) continue;
@@ -265,12 +280,16 @@ export function temperatureReturnCorrelation(series: DayTemperature[]): {
   return { correlation: denom === 0 ? 0 : Math.round((num / denom) * 1000) / 1000, n };
 }
 
+/**
+ * 라벨은 '예측'이 아니라 '위치'를 가리키는 말로 쓴다.
+ * (과열 → 과열권: 떨어진다는 뜻이 아니라 높이 올라와 있다는 뜻)
+ */
 export function temperatureLabel(temp: number): string {
-  if (temp >= 80) return '극단적 과열';
-  if (temp >= 60) return '과열';
+  if (temp >= 80) return '과열권';
+  if (temp >= 60) return '상단권';
   if (temp >= 40) return '중립';
-  if (temp >= 20) return '냉각';
-  return '극단적 공포';
+  if (temp >= 20) return '냉각권';
+  return '공포권';
 }
 
 export function temperatureQuote(temp: number): { who: string; line: string } {

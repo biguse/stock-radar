@@ -25,7 +25,7 @@ function tempColor(t: number): string {
 }
 
 const AXIS_PLAIN: Record<string, string> = {
-  price: '지수가 장기 추세보다',
+  price: '5년 평균보다',
   fear: '미국 공포지수(VIX)',
   real: '한국 수출 증가율',
   fx: '원/달러 환율',
@@ -110,6 +110,9 @@ function Temp({ current }: { current: NonNullable<ApiResponse['current']> }) {
         <div className="mt-3 text-2xl font-bold" style={{ color }}>
           {current.label}
         </div>
+        <p className="mx-auto mt-3 max-w-[19rem] text-[13px] leading-relaxed text-neutral-500">
+          지난 30년과 비교해 코스피가 얼마나 높이 올라와 있는지를 0~100으로 나타낸 값입니다.
+        </p>
       </div>
 
       <div className="relative mt-10">
@@ -146,31 +149,59 @@ function Temp({ current }: { current: NonNullable<ApiResponse['current']> }) {
 }
 
 function Axes({ axes }: { axes: Axis[] }) {
+  const price = axes.find((a) => a.key === 'price');
+  const context = axes.filter((a) => a.key !== 'price');
+
   return (
-    <section className="mt-14 border-t border-neutral-200 pt-8">
-      <h2 className="text-[15px] font-bold tracking-tight">온도를 만든 다섯 가지</h2>
-      <div className="mt-4 space-y-3">
-        {axes.map((a) => (
-          <div key={a.key} className="flex items-center gap-3">
-            <div className="w-[122px] shrink-0 text-[12px] leading-tight text-neutral-500">
-              {AXIS_PLAIN[a.key] ?? a.label}
-            </div>
-            <div className="w-[68px] shrink-0 text-right text-[13px] font-medium tabular-nums text-neutral-900">
-              {axisValue(a)}
-            </div>
-            <div className="h-[7px] flex-1 bg-neutral-100">
+    <>
+      <section className="mt-14 border-t border-neutral-200 pt-8">
+        <h2 className="text-[15px] font-bold tracking-tight">이 숫자는 무엇을 재는가</h2>
+        {price ? (
+          <>
+            <p className="mt-3 text-[16px] leading-relaxed text-neutral-800">
+              코스피가 <strong className="font-semibold">최근 5년 평균보다 {axisValue(price)}</strong>에
+              있습니다. 이 거리를 지난 30년과 비교해 백분위로 환산한 것이 온도입니다.
+            </p>
+            <div className="mt-4 h-[9px] w-full bg-neutral-100">
               <div
                 className="h-full"
-                style={{ width: `${Math.max(2, Math.min(100, a.score))}%`, background: tempColor(a.score) }}
+                style={{ width: `${Math.max(2, Math.min(100, price.score))}%`, background: tempColor(price.score) }}
               />
             </div>
-          </div>
-        ))}
-      </div>
-      <p className="mt-4 text-[12px] leading-relaxed text-neutral-400">
-        각 항목을 지난 30년과 비교해 “얼마나 뜨거운 편인지”로 환산했습니다. 막대가 길수록 과열입니다.
-      </p>
-    </section>
+          </>
+        ) : null}
+        <p className="mt-4 border-l-2 border-neutral-900 pl-4 text-[13px] leading-relaxed text-neutral-600">
+          <strong className="font-semibold text-neutral-900">주가만 봅니다. 기업 이익은 보지 않습니다.</strong>{' '}
+          이익이 함께 늘었다면 높이 올라온 것이 곧 비싼 것은 아닙니다. 30년치 코스피 PER·PBR을 구할 수
+          없어 쓰지 못했습니다.
+        </p>
+      </section>
+
+      <section className="mt-12">
+        <h2 className="text-[15px] font-bold tracking-tight">오늘의 환경</h2>
+        <p className="mt-1.5 text-[12px] leading-relaxed text-neutral-400">
+          참고용입니다. 검증 결과 이 넷을 온도에 섞으면 정확도가 오히려 떨어져 빼두었습니다.
+        </p>
+        <div className="mt-4 space-y-3">
+          {context.map((a) => (
+            <div key={a.key} className="flex items-center gap-3">
+              <div className="w-[128px] shrink-0 text-[12px] leading-tight text-neutral-500">
+                {AXIS_PLAIN[a.key] ?? a.label}
+              </div>
+              <div className="w-[64px] shrink-0 text-right text-[13px] font-medium tabular-nums text-neutral-900">
+                {axisValue(a)}
+              </div>
+              <div className="h-[6px] flex-1 bg-neutral-100">
+                <div
+                  className="h-full bg-neutral-300"
+                  style={{ width: `${Math.max(2, Math.min(100, a.score))}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </>
   );
 }
 
@@ -211,7 +242,8 @@ function Outcome({ bucket }: { bucket: Bucket }) {
         <strong className="font-semibold">+{bucket.max.toFixed(0)}%</strong>까지 갈렸습니다.
       </p>
       <p className="mt-3 text-[14px] leading-relaxed text-neutral-500">
-        손실로 끝난 경우는 {bucket.negativeRate.toFixed(0)}%. 이 폭이 곧 “아무도 모른다”는 뜻입니다.
+        손실로 끝난 경우는 {bucket.negativeRate.toFixed(0)}%였습니다. 높이 올라와 있다는 사실이
+        곧 떨어진다는 뜻은 아닙니다.
       </p>
     </section>
   );
