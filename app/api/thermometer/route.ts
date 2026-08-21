@@ -124,22 +124,136 @@ async function build() {
     // 라이브 실패 시 마지막 배치 값 사용
   }
 
-  // 밸류에이션 잣대 (KRX 지수 PER/PBR) — 온도에는 넣지 않고 보조 지표로 제시
-  const perSeries = expandingPercentileSeries(rows.map((r) => r.per ?? null), { warmup: 750 });
-  const pbrSeries = expandingPercentileSeries(rows.map((r) => r.pbr ?? null), { warmup: 750 });
-  function latestOf(raw: (number | null | undefined)[], pct: (number | null)[]) {
+  // ── 네 가지 잣대 ────────────────────────────────────────────────
+  // 같은 시장도 무엇으로 재느냐에 따라 답이 달라진다. 그 불일치를 보여주는 것이
+  // 이 지표의 핵심이다. (검증: 이격도·PBR은 코스피 차트와 0.78~0.93으로 겹치고,
+  //  PER·ERP는 독립적이지만 예측력이 없다 — /api/analysis 참조)
+  const perPct = expandingPercentileSeries(rows.map((r) => r.per ?? null), { warmup: 750 });
+  const pbrPct = expandingPercentileSeries(rows.map((r) => r.pbr ?? null), { warmup: 750 });
+  const erpRaw = rows.map((r) =>
+    r.per && r.per > 0 && r.kr10y !== null && r.kr10y !== undefined ? 100 / r.per - r.kr10y : null,
+  );
+  // 위험프리미엄은 낮을수록 보상이 얇다 = 뜨겁다
+  const erpPct = expandingPercentileSeries(erpRaw, { warmup: 750, invert: true });
+
+  function latest(raw: (number | null | undefined)[], pct: (number | null)[]) {
     for (let i = raw.length - 1; i >= 0; i--) {
       const v = raw[i];
       const p = pct[i];
       if (v !== null && v !== undefined && p !== null) {
-        return { raw: v, score: Math.round(p * 10) / 10, date: rows[i].d };
+        return { raw: Math.round(v * 100) / 100, score: Math.round(p * 10) / 10, date: rows[i].d };
       }
     }
     return null;
   }
-  const valuation = {
-    per: latestOf(rows.map((r) => r.per), perSeries),
-    pbr: latestOf(rows.map((r) => r.pbr), pbrSeries),
+
+  const gaugeDefs = [
+    {
+      key: 'trend',
+      label: '주가 위치',
+      question: '최근 5년 평균보다 얼마나 높이 올라왔나',
+      value: current ? { raw: Math.round((current.axes.find((a) => a.key === 'price')?.raw ?? 0) * 100) / 100, score: current.temp, date: current.d } : null,
+      format: (v: number) => `5년 평균 +${v.toFixed(0)}%`,
+    },
+    {
+      key: 'pbr',
+      label: '자산 대비',
+      question: '기업이 가진 순자산의 몇 배에 거래되나',
+      value: latest(rows.map((r) => r.pbr), pbrPct),
+      format: (v: number) => `PBR ${v.toFixed(2)}배`,
+    },
+    {
+      key: 'per',
+      label: '이익 대비',
+      question: '한 해 버는 돈의 몇 배에 거래되나',
+      value: latest(rows.map((r) => r.per), perPct),
+      format: (v: number) => `PER ${v.toFixed(1)}배`,
+    },
+    {
+      key: 'erp',
+      label: '위험 보상',
+      question: '국채 대신 주식을 사는 대가로 얼마를 더 기대하나',
+      value: latest(erpRaw, erpPct),
+      format: (v: number) => `국채보다 +${v.toFixed(2)}%p`,
+    },
+  ];
+
+  const gauges = gaugeDefs
+    .filter((g) => g.value !== null)
+    .map((g) => ({
+      key: g.key,
+      label: g.label,
+      question: g.question,
+      raw: g.value!.raw,
+      rawText: g.format(g.value!.raw),
+      score: g.value!.score,
+      date: g.value!.date,
+    }));
+
+  const scores = gauges.map((g) => g.score).sort((a, b) => a - b);
+  const range =
+    scores.length > 0
+      ? {
+          min: scores[0],
+          max: scores[scores.length - 1],
+          median: scores[Math.floor(scores.length / 2)],
+          spread: Math.round((scores[scores.length - 1] - scores[0]) * 10) / 10,
+        }
+      : null;
+
+  // ── 상승 확률 ────────────────────────────────────────────────
+  // 1일 후는 창이 겹치지 않아 독립 표본이 그대로 살아있다(9,400여 회).
+  // 이 프로젝트에서 통계적으로 가장 단단한 숫자이며, 결론은
+  // "내일에 대해서는 온도가 알려주는 게 거의 없다"이다.
+  const devScores = computeTemperatureSeries(rows).reduce((m, t) => {
+    m.set(t.d, t.temp);
+    return m;
+  }, new Map<string, number>());
+
+  function upRate(h: number) {
+    let up = 0;
+    let n = 0;
+    for (let i = 0; i + h < rows.length; i++) {
+      if (rows[i + h].kospi > rows[i].kospi) up++;
+      n++;
+    }
+    return { days: h, pUp: Math.round((up / n) * 1000) / 10, n, independent: Math.round(n / h) };
+  }
+
+  function tomorrowByTemp(size = 20) {
+    const m = new Map<number, { up: number; n: number }>();
+    for (let i = 0; i + 1 < rows.length; i++) {
+      const sc = devScores.get(rows[i].d);
+      if (sc === undefined) continue;
+      const b = Math.min(Math.floor(sc / size), Math.ceil(100 / size) - 1);
+      if (!m.has(b)) m.set(b, { up: 0, n: 0 });
+      const e = m.get(b)!;
+      if (rows[i + 1].kospi > rows[i].kospi) e.up++;
+      e.n++;
+    }
+    return [...m.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([b, e]) => ({ from: b * size, to: b * size + size, pUp: Math.round((e.up / e.n) * 1000) / 10, n: e.n }));
+  }
+
+  const byTemp = tomorrowByTemp();
+  // 미래 휴장일은 알 수 없다(pykrx도 과거 거래일만 역산 가능).
+  // 따라서 '내일'이라 단언하지 않고 '다음 거래일'로만 말한다.
+  const lastTradingDay = rows[rows.length - 1]?.d ?? null;
+  const todayKst = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+  const dow = new Date(`${todayKst}T00:00:00Z`).getUTCDay();
+  const marketClosedToday = dow === 0 || dow === 6;
+
+  const probability = {
+    lastTradingDay,
+    todayKst,
+    marketClosedToday,
+    byHorizon: [1, 5, 21, 63, 252, 756, 1260].map(upRate),
+    tomorrowByTemp: byTemp,
+    tomorrowSpread: {
+      min: Math.min(...byTemp.map((b) => b.pUp)),
+      max: Math.max(...byTemp.map((b) => b.pUp)),
+    },
   };
 
   const myBucket =
@@ -173,7 +287,9 @@ async function build() {
           })),
         }
       : null,
-    valuation,
+    gauges,
+    range,
+    probability,
     myBucket,
     buckets,
     validation,

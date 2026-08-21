@@ -107,7 +107,39 @@ export async function GET() {
     return { correlation: corr(xs, ys), n: xs.length };
   })();
 
+  // ── 상승 확률: 기간별 / 온도구간별 ───────────────────────────
+  const devScore = scoreMap['dev'];
+  function pUp(h: number) {
+    let up = 0, n = 0;
+    for (let i = 0; i + h < rows.length; i++) {
+      if (rows[i + h].kospi > rows[i].kospi) up++;
+      n++;
+    }
+    return { days: h, pUp: Math.round((up / n) * 1000) / 10, n, effectiveN: Math.round(n / h) };
+  }
+  function pUpByBucket(h: number, size = 20) {
+    const m = new Map<number, { up: number; n: number }>();
+    for (let i = 0; i + h < rows.length; i++) {
+      const sc = devScore[i];
+      if (sc === null) continue;
+      const b = Math.min(Math.floor(sc / size), Math.ceil(100 / size) - 1);
+      if (!m.has(b)) m.set(b, { up: 0, n: 0 });
+      const e = m.get(b)!;
+      if (rows[i + h].kospi > rows[i].kospi) e.up++;
+      e.n++;
+    }
+    return [...m.entries()].sort((a, b) => a[0] - b[0]).map(([b, e]) => ({
+      from: b * size, to: b * size + size,
+      pUp: Math.round((e.up / e.n) * 1000) / 10, n: e.n,
+    }));
+  }
+
   return NextResponse.json({
+    probability: {
+      byHorizon: [1, 5, 21, 63, 252, 756, 1260].map(pUp),
+      tomorrowByTemp: pUpByBucket(1),
+      oneYearByTemp: pUpByBucket(252),
+    },
     overlap: {
       'dev↔pbr': pairCorr('dev', 'pbr'),
       'dev↔per': pairCorr('dev', 'per'),
