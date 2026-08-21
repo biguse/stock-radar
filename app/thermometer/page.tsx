@@ -103,7 +103,7 @@ export default function ThermometerPage() {
           <p className="mt-20 text-center text-sm text-red-700">불러오지 못했습니다 — {err}</p>
         ) : data && data.current && data.range && data.myBucket ? (
           <>
-            <Headline range={data.range} current={data.current} />
+            <Headline range={data.range} current={data.current} gauges={data.gauges} bucket={data.myBucket} />
             <Gauges gauges={data.gauges} kospi={data.current.kospi} />
             <Tomorrow probability={data.probability} />
             <Quote quote={data.current.quote} />
@@ -117,34 +117,95 @@ export default function ThermometerPage() {
   );
 }
 
+/** 헤드라인 문장 — 숫자가 아니라 말로 상태를 알려준다 */
+function headline(range: { min: number; max: number }, gauges: Gauge[]) {
+  const { min, max } = range;
+  const top = gauges.filter((g) => g.score >= 90).length;
+  const bottom = gauges.filter((g) => g.score <= 10).length;
+
+  if (min >= 80)
+    return {
+      main: '지금 한국 증시는 30년 기록 중 가장 높은 자리에 있습니다',
+      sub: '네 잣대가 모두 최상단을 가리킵니다. 이견이 없습니다.',
+    };
+  if (min >= 60)
+    return {
+      main: '지금 한국 증시는 역사적으로 높은 자리에 있습니다',
+      sub: `네 잣대가 모두 상단권 이상을 가리킵니다.${top > 0 ? ` 그중 ${top}개는 최상단입니다.` : ''} 가장 낮게 본 잣대도 ${min.toFixed(0)}점입니다.`,
+    };
+  if (max <= 20)
+    return {
+      main: '지금 한국 증시는 30년 기록 중 가장 낮은 자리에 있습니다',
+      sub: '네 잣대가 모두 최하단을 가리킵니다.',
+    };
+  if (max <= 40)
+    return {
+      main: '지금 한국 증시는 역사적으로 낮은 자리에 있습니다',
+      sub: `네 잣대가 모두 하단권입니다.${bottom > 0 ? ` 그중 ${bottom}개는 최하단입니다.` : ''}`,
+    };
+  if (max - min > 40)
+    return {
+      main: '지금은 잣대마다 답이 크게 엇갈립니다',
+      sub: `가장 낮게 본 잣대는 ${min.toFixed(0)}점, 가장 높게 본 잣대는 ${max.toFixed(0)}점입니다. 지금은 누구의 확신도 믿기 어렵습니다.`,
+    };
+  return {
+    main: '지금 한국 증시는 중간쯤에 있습니다',
+    sub: `잣대에 따라 ${min.toFixed(0)}점에서 ${max.toFixed(0)}점 사이를 가리킵니다.`,
+  };
+}
+
 function Headline({
   range,
   current,
+  gauges,
+  bucket,
 }: {
   range: NonNullable<ApiResponse['range']>;
   current: NonNullable<ApiResponse['current']>;
+  gauges: Gauge[];
+  bucket: Bucket | null;
 }) {
   const [y, m, d] = current.date.split('-');
+  const h = headline(range, gauges);
+
   return (
-    <section className="mt-12 text-center">
-      <div className="flex items-start justify-center gap-3">
-        <span className="text-[4.6rem] font-bold leading-[0.85] tracking-tighter" style={{ color: tempColor(range.min) }}>
-          {range.min.toFixed(0)}
-        </span>
-        <span className="mt-6 text-3xl font-light text-neutral-300">–</span>
-        <span className="text-[4.6rem] font-bold leading-[0.85] tracking-tighter" style={{ color: tempColor(range.max) }}>
-          {range.max.toFixed(0)}
-        </span>
-        <span className="mt-6 text-2xl font-medium text-neutral-300">도</span>
+    <section className="mt-12">
+      <h2 className="text-center text-[1.7rem] font-bold leading-[1.35] tracking-tight text-neutral-900">
+        {h.main}
+      </h2>
+
+      {/* 네 잣대의 위치를 한 줄에 겹쳐 보여준다 */}
+      <div className="relative mt-8 h-8">
+        <div className="absolute top-[14px] h-[3px] w-full bg-neutral-200" />
+        {gauges.map((g) => (
+          <div
+            key={g.key}
+            className="absolute top-[8px] h-[15px] w-[15px] rounded-full border-2 border-white"
+            style={{
+              left: `${Math.max(0, Math.min(100, g.score))}%`,
+              background: tempColor(g.score),
+              transform: 'translateX(-50%)',
+            }}
+            title={`${g.label} ${g.score.toFixed(0)}점`}
+          />
+        ))}
+        <div className="absolute top-0 text-[10px] text-neutral-400">0 공포</div>
+        <div className="absolute right-0 top-0 text-[10px] text-neutral-400">과열 100</div>
       </div>
 
-      <p className="mx-auto mt-6 max-w-[20rem] text-[15px] font-medium leading-relaxed text-neutral-900">
-        {verdict(range)}
-      </p>
-      <p className="mt-2 text-[13px] text-neutral-500">
-        같은 시장인데, 무엇으로 재느냐에 따라 이만큼 다릅니다.
-      </p>
-      <p className="mt-5 text-[13px] text-neutral-400">
+      <p className="mt-5 text-center text-[14px] leading-relaxed text-neutral-600">{h.sub}</p>
+
+      {bucket ? (
+        <p className="mx-auto mt-6 max-w-[22rem] border-t border-neutral-200 pt-5 text-center text-[15px] leading-relaxed text-neutral-800">
+          다만 <strong className="font-semibold">과거 같은 자리에서 1년 뒤 결과는 반반이었습니다.</strong>
+          <span className="mt-1 block text-[13px] text-neutral-500">
+            손실로 끝난 경우 {bucket.negativeRate.toFixed(0)}% · 결과는 {bucket.min.toFixed(0)}%부터 +
+            {bucket.max.toFixed(0)}%까지 갈렸습니다
+          </span>
+        </p>
+      ) : null}
+
+      <p className="mt-6 text-center text-[13px] text-neutral-400">
         코스피 {current.kospi.toLocaleString('ko-KR', { maximumFractionDigits: 0 })} · {y}년 {Number(m)}월{' '}
         {Number(d)}일
       </p>
