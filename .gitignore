@@ -23,3 +23,10 @@ yarn-error.log*
 .idea/
 .claude/
 __pycache__/
+
+# KRX 감사 보고서는 실행할 때마다 새로 만들어지는 산출물이다.
+# 저장소에는 넣지 않고 Actions 아티팩트(보관 7일)로만 남긴다.
+# 영구 증명(기간·공통일수·불일치·해시·run)은
+# data/market-history.manifest.json 의 verifications 에 있다.
+reports/*
+!reports/README.md

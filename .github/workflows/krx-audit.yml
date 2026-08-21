@@ -1,0 +1,102 @@
+name: krx-audit
+
+# 브랜치 push마다 돌지 않는다. KRX는 계정 인증이 필요하고 응답이 느려서,
+# 코드 변경과 무관한 외부 의존을 모든 커밋의 관문에 두면 빌드가
+# 남의 사정으로 빨간불이 된다. 손으로 부르거나 주 1회만 돈다.
+on:
+  workflow_dispatch:
+    inputs:
+      year:
+        description: '대조할 연도'
+        required: false
+        default: '2026'
+      start:
+        description: '조회 시작 YYYYMMDD (비우면 연초)'
+        required: false
+        default: ''
+      end:
+        description: '조회 종료 YYYYMMDD (비우면 연말 또는 오늘)'
+        required: false
+        default: ''
+  schedule:
+    # 매주 일요일 13:00 UTC = 22:00 KST
+    - cron: '0 13 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: krx-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          # 3.12 고정 — pykrx 1.2.8이 요구하는 버전대이고,
+          # 로컬(3.9)에서는 1.0.51까지만 잡혀 로그인이 되지 않았다.
+          python-version: '3.12'
+
+      - name: Install pykrx (pinned)
+        run: pip install --quiet 'pykrx==1.2.8'
+
+      - name: Record data file hash before
+        run: |
+          echo "SHA_BEFORE=$(sha256sum data/market-history.json | cut -d' ' -f1)" >> "$GITHUB_ENV"
+
+      # 실패 조건이 명시적이다. 인증이 없거나 응답이 비면 건너뛰지 않고 실패한다.
+      # 데이터 파일은 읽기만 한다.
+      - name: Audit against KRX
+        env:
+          KRX_ID: ${{ secrets.KRX_ID }}
+          KRX_PW: ${{ secrets.KRX_PW }}
+          YEAR: ${{ inputs.year || '2026' }}
+          START: ${{ inputs.start }}
+          END: ${{ inputs.end }}
+        run: |
+          ARGS="$YEAR --min-common 150"
+          [ -n "$START" ] && ARGS="$ARGS --start $START"
+          [ -n "$END" ] && ARGS="$ARGS --end $END"
+          python3 scripts/audit-krx-year.py $ARGS
+
+      - name: Verify data file untouched
+        if: always()
+        run: |
+          AFTER=$(sha256sum data/market-history.json | cut -d' ' -f1)
+          if [ "$SHA_BEFORE" != "$AFTER" ]; then
+            echo "::error::데이터 파일이 변경되었습니다. 이 잡은 읽기 전용이어야 합니다."
+            exit 1
+          fi
+          echo "데이터 파일 변경 없음 — $AFTER"
+
+      - name: Summary
+        if: always()
+        run: |
+          YEAR="${{ inputs.year || '2026' }}"
+          {
+            echo "## KRX 공식 시세 전수 대조 — ${YEAR}년"
+            if [ -f "reports/krx-audit-${YEAR}.md" ]; then
+              cat "reports/krx-audit-${YEAR}.md"
+            else
+              echo '보고서가 생성되지 않았습니다. 조회 단계 로그를 확인하세요.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # 원문(raw.json)은 아티팩트로만 남기고 저장소에는 커밋하지 않는다.
+      - name: Upload audit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: krx-audit-${{ inputs.year || '2026' }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            reports/krx-audit-*.md
+            reports/krx-audit-*.csv
+            reports/krx-audit-*.raw.json

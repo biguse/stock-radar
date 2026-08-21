@@ -11,6 +11,35 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # 무결성 검사가 직전 커밋의 데이터 파일과 대조하므로 2개가 필요하다.
+          fetch-depth: 2
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # ── 원자료 무결성 ────────────────────────────────────────────
+      # 가장 먼저 돈다. 아래 교차검증들은 모두 같은 데이터 파일을 읽으므로
+      # 원자료가 틀리면 사이좋게 틀린 답에 합의한다. 그 앞을 막는 게이트다.
+      - name: Data integrity gate
+        run: |
+          {
+            echo '## 원자료 무결성 — 예고 없는 변경 탐지'
+            echo '```'
+            python3 scripts/verify_data_integrity.py
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Data integrity gate — self test
+        run: |
+          {
+            echo '## 무결성 게이트 자체 시험'
+            echo '```'
+            python3 scripts/test_data_integrity.py
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -30,11 +59,6 @@ jobs:
       # ── 교차검증 ──────────────────────────────────────────────
       # 파이썬으로 독립 재계산한 값과 운영 API의 값을 대조한다.
       # 두 구현(TypeScript / Python)이 어긋나면 여기서 실패한다.
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
       - name: Install verification deps
         run: pip install --quiet numpy scipy
 
