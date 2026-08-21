@@ -104,10 +104,10 @@ export default function ThermometerPage() {
         ) : data && data.current && data.range && data.myBucket ? (
           <>
             <Headline range={data.range} current={data.current} />
-            <Gauges gauges={data.gauges} />
+            <Gauges gauges={data.gauges} kospi={data.current.kospi} />
             <Tomorrow probability={data.probability} />
             <Quote quote={data.current.quote} />
-            <Outcome bucket={data.myBucket} />
+            <Outcome bucket={data.myBucket} trendScore={data.gauges.find((g) => g.key === 'trend')?.score ?? 0} />
             <Honesty data={data} />
             <Footer data={data} />
           </>
@@ -152,40 +152,105 @@ function Headline({
   );
 }
 
-function Gauges({ gauges }: { gauges: Gauge[] }) {
+type Explain = { means: string; score: string; why: string; limit: string };
+
+function explain(g: Gauge, kospi: number): Explain {
+  switch (g.key) {
+    case 'trend':
+      return {
+        means: `지금 코스피 ${Math.round(kospi).toLocaleString('ko-KR')}는 최근 5년 평균의 약 ${(1 + g.raw / 100).toFixed(1)}배 수준입니다.`,
+        score: `${g.score.toFixed(0)}점은, 지난 30년 중 이보다 더 가파르게 올라와 있던 날이 ${(100 - g.score).toFixed(0)}%뿐이었다는 뜻입니다.`,
+        why: '시장이 평소 다니던 궤도에서 얼마나 멀리 왔는지를 봅니다.',
+        limit: '주가만 봅니다. 기업 이익이 함께 늘었다면 높이 올라온 것이 곧 비싼 것은 아닙니다.',
+      };
+    case 'pbr':
+      return {
+        means: `상장기업들이 가진 순자산의 약 ${g.raw.toFixed(1)}배 가격에 거래되고 있다는 뜻입니다. 1배면 장부에 적힌 값과 같은 가격입니다.`,
+        score: `${g.score.toFixed(0)}점은, 2002년 이후 이보다 비쌌던 적이 거의 없다는 뜻입니다. 한국 증시는 오랫동안 1배 안팎에 머물렀습니다.`,
+        why: '이익은 해마다 출렁이지만 자산은 천천히 변합니다. 그래서 가격이 과했는지 보는 데는 비교적 안정적인 잣대입니다.',
+        limit: '공장·부동산이 많은 기업에는 잘 맞지만, 가진 자산이 적은 기술기업에는 덜 맞습니다.',
+      };
+    case 'per':
+      return {
+        means: `지금 가격이 기업들이 한 해 버는 순이익의 약 ${g.raw.toFixed(0)}배라는 뜻입니다. 이익이 지금 그대로라면 원금을 회수하는 데 ${g.raw.toFixed(0)}년이 걸립니다.`,
+        score: `${g.score.toFixed(0)}점으로 높은 편이지만 극단은 아닙니다. 주가가 올랐지만 기업 이익도 함께 크게 늘어 나눗셈의 아래쪽이 커졌기 때문입니다.`,
+        why: '결국 주식의 값어치는 그 기업이 벌어들이는 돈에서 나옵니다.',
+        limit: '불황이 오면 이익이 먼저 급감해 PER이 치솟습니다. 가장 쌀 때 가장 비싸 보이는 함정이 있습니다.',
+      };
+    case 'erp':
+      return {
+        means: `주식에 기대할 수 있는 수익률이 국고채 금리보다 ${g.raw.toFixed(2)}%p 높다는 뜻입니다. 위험을 감수하는 대가가 그만큼이라는 얘기입니다.`,
+        score: `${g.score.toFixed(0)}점은, 그 대가가 역사적으로 얇은 편이라는 뜻입니다. 예금·채권과 비교한 주식의 매력이 낮아진 상태입니다.`,
+        why: '하워드 마크스 같은 투자자들이 “지금 위험이 제대로 보상받고 있는가”를 볼 때 쓰는 방식입니다. 가격의 높낮이가 아니라 대가를 봅니다.',
+        limit: '금리가 급변하면 크게 흔들립니다. 또 앞으로 벌 이익이 아니라 이미 번 이익으로 계산합니다.',
+      };
+    default:
+      return { means: '', score: '', why: '', limit: '' };
+  }
+}
+
+function Gauges({ gauges, kospi }: { gauges: Gauge[]; kospi: number }) {
   return (
     <section className="mt-11">
       <div className="space-y-5">
-        {gauges.map((g) => (
-          <div key={g.key}>
-            <div className="flex items-baseline justify-between">
-              <span className="text-[14px] font-semibold text-neutral-900">{g.label}</span>
-              <span className="text-[13px] tabular-nums text-neutral-500">
-                {g.rawText}
-                <span className="ml-2 font-bold" style={{ color: tempColor(g.score) }}>
-                  {g.score.toFixed(0)}
+        {gauges.map((g) => {
+          const e = explain(g, kospi);
+          return (
+            <div key={g.key}>
+              <div className="flex items-baseline justify-between">
+                <span className="text-[14px] font-semibold text-neutral-900">{g.label}</span>
+                <span className="text-[13px] tabular-nums text-neutral-500">
+                  {g.rawText}
+                  <span className="ml-2 font-bold" style={{ color: tempColor(g.score) }}>
+                    {g.score.toFixed(0)}
+                  </span>
                 </span>
-              </span>
+              </div>
+              <div className="relative mt-2 h-[10px]">
+                <div className="absolute top-[4px] h-[2px] w-full bg-neutral-200" />
+                <div
+                  className="absolute top-0 h-[10px] w-[10px] rounded-full"
+                  style={{
+                    left: `${Math.max(0, Math.min(100, g.score))}%`,
+                    background: tempColor(g.score),
+                    transform: 'translateX(-50%)',
+                  }}
+                />
+              </div>
+              <details className="group mt-1.5">
+                <summary className="cursor-pointer list-none text-[11px] leading-relaxed text-neutral-400 hover:text-neutral-600">
+                  {g.question}
+                  <span className="ml-1 text-neutral-300 group-open:hidden">· 자세히</span>
+                </summary>
+                <div className="mt-3 space-y-2 border-l-2 border-neutral-200 pl-4 text-[12px] leading-relaxed">
+                  <p className="text-neutral-800">
+                    <strong className="font-semibold">무슨 뜻이냐면</strong> {e.means}
+                  </p>
+                  <p className="text-neutral-600">
+                    <strong className="font-semibold text-neutral-800">{g.score.toFixed(0)}점인 이유</strong>{' '}
+                    {e.score}
+                  </p>
+                  <p className="text-neutral-600">
+                    <strong className="font-semibold text-neutral-800">왜 보나</strong> {e.why}
+                  </p>
+                  <p className="text-neutral-500">
+                    <strong className="font-semibold text-neutral-700">한계</strong> {e.limit}
+                  </p>
+                </div>
+              </details>
             </div>
-            <div className="relative mt-2 h-[10px]">
-              <div className="absolute top-[4px] h-[2px] w-full bg-neutral-200" />
-              <div
-                className="absolute top-0 h-[10px] w-[10px] rounded-full"
-                style={{ left: `${Math.max(0, Math.min(100, g.score))}%`, background: tempColor(g.score), transform: 'translateX(-50%)' }}
-              />
-            </div>
-            <div className="mt-1.5 text-[11px] leading-relaxed text-neutral-400">{g.question}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
-      <div className="mt-4 flex justify-between text-[10px] text-neutral-400">
+      <div className="mt-5 flex justify-between text-[10px] text-neutral-400">
         <span>0 공포</span>
         <span>50 중립</span>
         <span>과열 100</span>
       </div>
       <p className="mt-5 text-[12px] leading-relaxed text-neutral-400">
-        각 잣대를 2000년대 초부터의 기록과 비교해 0~100으로 환산했습니다. 100에 가까울수록 그 잣대로는
-        역사상 가장 뜨거운 축에 든다는 뜻입니다.
+        네 잣대를 모두 <strong className="font-medium text-neutral-500">0~100점</strong>으로 바꿔 나란히
+        놓았습니다. 점수는 “지금 값이 과거 기록 중 몇 번째로 뜨거운가”입니다. 90점이면 과거 90%의 날보다
+        뜨겁다는 뜻이지, 값 자체가 크다는 뜻은 아닙니다.
       </p>
     </section>
   );
@@ -308,7 +373,7 @@ function Quote({ quote }: { quote: { who: string; line: string } }) {
   );
 }
 
-function Outcome({ bucket }: { bucket: Bucket }) {
+function Outcome({ bucket, trendScore }: { bucket: Bucket; trendScore: number }) {
   const lo = Math.min(bucket.min, 0);
   const hi = Math.max(bucket.max, 0);
   const span = hi - lo || 1;
@@ -317,9 +382,12 @@ function Outcome({ bucket }: { bucket: Bucket }) {
   return (
     <section className="mt-14 border-t border-neutral-200 pt-8">
       <h2 className="text-[15px] font-bold tracking-tight">과거 이 자리에서, 1년 뒤</h2>
-      <p className="mt-1.5 text-[12px] leading-relaxed text-neutral-400">
-        네 잣대 중 과거 성적이 가장 나았던 <strong className="font-semibold text-neutral-500">주가 위치</strong>{' '}
-        기준입니다. 다른 잣대로 재면 그림이 달라집니다.
+      <p className="mt-1.5 text-[12px] leading-relaxed text-neutral-500">
+        네 잣대는 서로 다른 답을 주기 때문에 여기서는 하나만 골라야 했습니다. 그중 과거에 미래를 그나마
+        가장 잘 맞혔던 <strong className="font-semibold">주가 위치</strong>를 썼습니다. 오늘 그 점수가{' '}
+        {trendScore.toFixed(0)}점이니,{' '}
+        <strong className="font-semibold">과거에 비슷한 점수대였던 날들이 1년 뒤 어떻게 됐는지</strong>를 모은
+        것입니다. 다른 잣대로 고르면 그림이 달라집니다.
       </p>
 
       <div className="relative mt-9 h-12">
