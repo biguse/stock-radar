@@ -19,6 +19,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # 무결성 검사가 직전 커밋과 대조한다
+          fetch-depth: 2
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -52,6 +55,16 @@ jobs:
       - name: Rebuild bootstrap intervals
         run: node scripts/build-bootstrap.mjs
 
+      # 원자료가 바뀌는 지점이 바로 여기다. 커밋하기 전에 막는다.
+      # 새 행 추가는 통과하고, 과거 행이 사라지거나 바뀌면 실패한다.
+      - name: Data integrity gate
+        run: python3 scripts/verify_data_integrity.py
+
+      # 정상 증분이었으므로 승인된 상태 기록을 현재 파일로 갱신한다.
+      # (intentionalChanges는 그대로 보존된다)
+      - name: Refresh manifest
+        run: python3 scripts/verify_data_integrity.py --update-manifest
+
       - name: Commit if changed
         run: |
           if git diff --quiet -- data/; then
@@ -60,6 +73,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/market-history.json data/krx-valuation.json data/bootstrap.json
+          git add data/market-history.json data/market-history.manifest.json data/krx-valuation.json data/bootstrap.json
           git commit -m "chore: 시장 데이터 일일 기록 $(date -u +%Y-%m-%d)"
           git push
