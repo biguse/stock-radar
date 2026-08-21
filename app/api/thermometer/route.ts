@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import historyData from '@/data/market-history.json';
 import { holdingStats, payoffSensitivity, MEDALLION_WIN_RATE, COST } from '@/lib/trading-cost';
 import bootstrapData from '@/data/bootstrap.json';
+import { computeTechnicalSignals } from '@/lib/technical-indicators';
 import {
   averageDividendYield,
   expandingPercentileSeries,
@@ -113,6 +114,9 @@ async function build() {
     builtAt: boot.builtAt, uncertainRange: boot.uncertainRange,
   };
   const indicators = boot.indicators ?? [];
+  // 후행 추세 지표(골든크로스·MACD·볼린저) — 온도 계산에는 참여하지 않는다.
+  // 가격만 쓰므로 가볍고, 오늘 상태가 매일 바뀌므로 사전계산 대신 여기서 센다.
+  const technicalSignals = computeTechnicalSignals(rows);
   const dividend = averageDividendYield(rows);
   const honest = nonOverlappingValidation(series);
   const scorecard = walkForwardScorecard(series);
@@ -330,6 +334,7 @@ async function build() {
     bucketCI,
     bootstrapMeta,
     indicators,
+    technicalSignals,
     dividend,
     validation,
     honest: { correlation: honest.correlation, n: honest.n, points: honest.points },

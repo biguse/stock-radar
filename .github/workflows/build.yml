@@ -55,6 +55,15 @@ jobs:
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
+      - name: Cross-check technical signals
+        run: |
+          {
+            echo '## 교차검증 — 후행 추세 지표 (골든크로스·MACD·볼린저)'
+            echo '```'
+            python3 scripts/verify_technical.py --api http://localhost:3000/api/thermometer
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Full diagnostic report
         if: always()
         run: |
@@ -74,5 +83,15 @@ jobs:
             echo '## 2차 검증 진단 — 민감도·선택편향·검사공백'
             echo '```'
             python3 scripts/verify_second_review.py
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Technical signal report
+        if: always()
+        run: |
+          {
+            echo '## 후행 추세 지표 — 1년 뒤 결과'
+            echo '```'
+            python3 scripts/verify_technical.py
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
