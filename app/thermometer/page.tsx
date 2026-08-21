@@ -221,14 +221,14 @@ function explain(g: Gauge, kospi: number): Explain {
       return {
         means: `지금 코스피 ${Math.round(kospi).toLocaleString('ko-KR')}는 최근 5년 평균의 약 ${(1 + g.raw / 100).toFixed(1)}배 수준입니다.`,
         score: `${g.score.toFixed(0)}점은, 지난 30년 중 이보다 더 가파르게 올라와 있던 날이 ${(100 - g.score).toFixed(0)}%뿐이었다는 뜻입니다.`,
-        why: '시장이 평소 다니던 궤도에서 얼마나 멀리 왔는지를 봅니다.',
+        why: '시장이 평소 다니던 자리에서 얼마나 멀리 왔는지 봅니다.',
         limit: '주가만 봅니다. 기업 이익이 함께 늘었다면 높이 올라온 것이 곧 비싼 것은 아닙니다.',
       };
     case 'pbr':
       return {
         means: `상장기업들이 가진 순자산의 약 ${g.raw.toFixed(1)}배 가격에 거래되고 있다는 뜻입니다. 1배면 장부에 적힌 값과 같은 가격입니다.`,
         score: `${g.score.toFixed(0)}점은, 2002년 이후 이보다 비쌌던 적이 거의 없다는 뜻입니다. 한국 증시는 오랫동안 1배 안팎에 머물렀습니다.`,
-        why: '이익은 해마다 출렁이지만 자산은 천천히 변합니다. 그래서 가격이 과했는지 보는 데는 비교적 안정적인 잣대입니다.',
+        why: '이익은 해마다 출렁이지만 자산은 천천히 변합니다. 그래서 값이 과했는지 볼 때 비교적 덜 흔들리는 잣대입니다.',
         limit: '공장·부동산이 많은 기업에는 잘 맞지만, 가진 자산이 적은 기술기업에는 덜 맞습니다.',
       };
     case 'per':
@@ -241,9 +241,9 @@ function explain(g: Gauge, kospi: number): Explain {
     case 'erp':
       return {
         means: `주식에 기대할 수 있는 수익률이 국고채 금리보다 ${g.raw.toFixed(2)}%p 높다는 뜻입니다. 위험을 감수하는 대가가 그만큼이라는 얘기입니다.`,
-        score: `${g.score.toFixed(0)}점은, 그 대가가 역사적으로 얇은 편이라는 뜻입니다. 예금·채권과 비교한 주식의 매력이 낮아진 상태입니다.`,
-        why: '하워드 마크스 같은 투자자들이 “지금 위험이 제대로 보상받고 있는가”를 볼 때 쓰는 방식입니다. 가격의 높낮이가 아니라 대가를 봅니다.',
-        limit: '금리가 급변하면 크게 흔들립니다. 또 앞으로 벌 이익이 아니라 이미 번 이익으로 계산합니다.',
+        score: `${g.score.toFixed(0)}점은, 그 대가가 역사적으로 얇은 편이라는 뜻입니다. 예금이나 채권에 견주면 주식의 매력이 그만큼 줄었습니다.`,
+        why: '하워드 마크스 같은 투자자들이 “지금 위험값을 제대로 쳐주고 있나”를 따질 때 쓰는 방식입니다. 가격의 높낮이가 아니라 대가를 봅니다.',
+        limit: '금리가 출렁이면 같이 흔들립니다. 앞으로 벌 이익이 아니라 이미 번 이익으로 계산한다는 점도 감안해야 합니다.',
       };
     default:
       return { means: '', score: '', why: '', limit: '' };
@@ -310,7 +310,7 @@ function Gauges({ gauges, kospi }: { gauges: Gauge[]; kospi: number }) {
       </div>
       <p className="mt-5 text-[12px] leading-relaxed text-neutral-400">
         네 잣대를 모두 <strong className="font-medium text-neutral-500">0~100점</strong>으로 바꿔 나란히
-        놓았습니다. 점수는 “지금 값이 과거 기록 중 몇 번째로 뜨거운가”입니다. 90점이면 과거 90%의 날보다
+        놓았습니다. 점수는 지금 값이 과거 기록에서 몇 번째로 뜨거운 축이냐를 나타냅니다. 90점이면 과거 90%의 날보다
         뜨겁다는 뜻이지, 값 자체가 크다는 뜻은 아닙니다.
       </p>
     </section>
@@ -369,11 +369,11 @@ function Tomorrow({ probability }: { probability?: Probability }) {
       <p className="mt-7 text-[15px] leading-relaxed text-neutral-800">
         그리고 오늘이 공포권이든 과열권이든, 이 숫자는{' '}
         <strong className="font-semibold">{min}%에서 {max}% 사이</strong>를 벗어나지 않습니다.{' '}
-        <strong className="font-semibold">위에서 본 네 잣대 전부가 내일에 대해서는 쓸모가 없습니다.</strong>
+        <strong className="font-semibold">위에서 본 네 잣대 모두 내일 일은 알려주지 못합니다.</strong>
       </p>
       <p className="mt-3 text-[13px] leading-relaxed text-neutral-500">
         내일 오를 종목을 알려주는 곳은 많습니다. 그 예측이 30년 기록에서 어떤 근거를 갖는지 보여주는
-        곳은 드뭅니다. 이 페이지가 하려는 일이 그것입니다.
+        곳은 드뭅니다. 이 페이지는 그걸 하려고 만들었습니다.
       </p>
 
       <div className="mt-10 border-t border-neutral-200 pt-7">
@@ -447,11 +447,11 @@ function Outcome({ bucket, trendScore }: { bucket: Bucket; trendScore: number })
     <section className="mt-14 border-t border-neutral-200 pt-8">
       <h2 className="text-[15px] font-bold tracking-tight">과거 이 자리에서, 1년 뒤</h2>
       <p className="mt-1.5 text-[12px] leading-relaxed text-neutral-500">
-        네 잣대는 서로 다른 답을 주기 때문에 여기서는 하나만 골라야 했습니다. 그중 과거에 미래를 그나마
+        네 잣대는 저마다 답이 달라서 여기서는 하나만 골라야 했습니다. 그중 과거에 미래를 그나마
         가장 잘 맞혔던 <strong className="font-semibold">주가 위치</strong>를 썼습니다. 오늘 그 점수가{' '}
         {trendScore.toFixed(0)}점이니,{' '}
         <strong className="font-semibold">과거에 비슷한 점수대였던 날들이 1년 뒤 어떻게 됐는지</strong>를 모은
-        것입니다. 다른 잣대로 고르면 그림이 달라집니다.
+        것입니다. 다른 잣대를 골랐다면 결과도 달라집니다.
       </p>
 
       <div className="relative mt-9 h-12">
