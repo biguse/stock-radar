@@ -42,7 +42,16 @@ type CostInfo = {
   assumptions: { stockPct: number; etfPct: number };
 };
 
+type BucketCI = {
+  from: number; to: number;
+  medianLow: number; medianHigh: number;
+  negLow: number; negHigh: number;
+  signCertain: boolean;
+};
+
 type ApiResponse = {
+  bucketCI?: BucketCI[];
+  dividend?: { avg: number; from: string | null };
   cost?: CostInfo;
   probability?: Probability;
   current: { date: string; kospi: number; temp: number; label: string; quote: { who: string; line: string } } | null;
@@ -127,12 +136,23 @@ export default function ThermometerPage() {
           <p className="mt-20 text-center text-sm text-red-700">불러오지 못했습니다 — {err}</p>
         ) : data && data.current && data.range && data.myBucket ? (
           <>
-            <Headline range={data.range} current={data.current} gauges={data.gauges} bucket={data.myBucket} />
+            <Headline
+              range={data.range}
+              current={data.current}
+              gauges={data.gauges}
+              bucket={data.myBucket}
+              bucketCI={data.bucketCI?.find((c) => c.from === data.myBucket?.from)}
+            />
             <Gauges gauges={data.gauges} kospi={data.current.kospi} />
             <Tomorrow probability={data.probability} />
             <BreakEven cost={data.cost} />
+            <Dividend dividend={data.dividend} />
             <Quote quote={data.current.quote} />
-            <Outcome bucket={data.myBucket} trendScore={data.gauges.find((g) => g.key === 'trend')?.score ?? 0} />
+            <Outcome
+              bucket={data.myBucket}
+              trendScore={data.gauges.find((g) => g.key === 'trend')?.score ?? 0}
+              ci={data.bucketCI?.find((c) => c.from === data.myBucket?.from)}
+            />
             <Honesty data={data} />
             <Footer data={data} />
           </>
@@ -159,9 +179,20 @@ function headlineState(range: { min: number; max: number }): string {
   return '지금 한국 증시는 중간쯤에 있습니다';
 }
 
-/** 뻔하지 않은 쪽 — 그 자리에서 실제로 무슨 일이 있었나 */
-function headlineTwist(bucket: Bucket): { main: string; sub: string } {
+/**
+ * 뻔하지 않은 쪽 — 그 자리가 무엇을 뜻하는가.
+ * 블록 부트스트랩 신뢰구간이 넓으면 점 추정을 주장하지 않는다.
+ */
+function headlineTwist(bucket: Bucket, ci?: BucketCI): { main: string; sub: string } {
   const neg = bucket.negativeRate;
+  const wide = ci !== undefined && (!ci.signCertain || ci.negHigh - ci.negLow > 40);
+
+  if (wide && ci) {
+    return {
+      main: '그런데 그 자리가 무엇을 뜻하는지는\n데이터가 답하지 못합니다',
+      sub: `과거 같은 구간의 1년 뒤 손실 확률은 ${neg.toFixed(0)}%로 계산되지만, 표본이 겹쳐 있어 실제로는 ${ci.negLow.toFixed(0)}~${ci.negHigh.toFixed(0)}% 사이 어디든 될 수 있습니다`,
+    };
+  }
   const spread = `${bucket.min.toFixed(0)}%부터 +${bucket.max.toFixed(0)}%까지 갈렸습니다`;
   if (neg >= 45 && neg <= 55)
     return {
@@ -170,7 +201,7 @@ function headlineTwist(bucket: Bucket): { main: string; sub: string } {
     };
   if (neg > 55)
     return {
-      main: `그리고 과거 같은 자리에서는\n1년 뒤 손실이 더 많았습니다`,
+      main: '그리고 과거 같은 자리에서는\n1년 뒤 손실이 더 많았습니다',
       sub: `손실로 끝난 경우 ${neg.toFixed(0)}% · ${spread}`,
     };
   return {
@@ -184,15 +215,17 @@ function Headline({
   current,
   gauges,
   bucket,
+  bucketCI,
 }: {
   range: NonNullable<ApiResponse['range']>;
   current: NonNullable<ApiResponse['current']>;
   gauges: Gauge[];
   bucket: Bucket | null;
+  bucketCI?: BucketCI;
 }) {
   const [y, m, d] = current.date.split('-');
   const state = headlineState(range);
-  const twist = bucket ? headlineTwist(bucket) : null;
+  const twist = bucket ? headlineTwist(bucket, bucketCI) : null;
 
   return (
     <section className="mt-12">
@@ -581,6 +614,27 @@ function BreakEven({ cost }: { cost?: CostInfo }) {
   );
 }
 
+function Dividend({ dividend }: { dividend?: { avg: number; from: string | null } }) {
+  if (!dividend || dividend.avg <= 0) return null;
+  return (
+    <section className="mt-10 bg-neutral-50 p-5">
+      <div className="text-[13px] font-semibold text-neutral-900">
+        위 숫자들은 배당을 빼고 계산한 것입니다
+      </div>
+      <p className="mt-2 text-[13px] leading-relaxed text-neutral-600">
+        코스피는 주가만 반영하는 가격지수라 배당이 들어 있지 않습니다.{' '}
+        {dividend.from?.slice(0, 4)}년 이후 코스피 평균 배당수익률은{' '}
+        <strong className="font-semibold text-neutral-900">연 {dividend.avg}%</strong>였습니다. 실제로
+        주식을 들고 있었다면 위에 적힌 수익률보다 해마다 그만큼 더 받았다는 뜻입니다.
+      </p>
+      <p className="mt-2 text-[12px] leading-relaxed text-neutral-500">
+        기간이 길수록 이 차이가 커집니다. 이 페이지의 장기 수치는 실제 투자 성과를 그만큼 낮게 잡고
+        있습니다.
+      </p>
+    </section>
+  );
+}
+
 function Quote({ quote }: { quote: { who: string; line: string } }) {
   return (
     <figure className="mt-12 text-center">
@@ -592,7 +646,7 @@ function Quote({ quote }: { quote: { who: string; line: string } }) {
   );
 }
 
-function Outcome({ bucket, trendScore }: { bucket: Bucket; trendScore: number }) {
+function Outcome({ bucket, trendScore, ci }: { bucket: Bucket; trendScore: number; ci?: BucketCI }) {
   const lo = Math.min(bucket.min, 0);
   const hi = Math.max(bucket.max, 0);
   const span = hi - lo || 1;
@@ -639,6 +693,44 @@ function Outcome({ bucket, trendScore }: { bucket: Bucket; trendScore: number })
         손실로 끝난 경우는 {bucket.negativeRate.toFixed(0)}%였습니다. 높이 올라와 있다는 사실이 곧
         떨어진다는 뜻은 아닙니다.
       </p>
+      {ci ? (
+        <div className="mt-6 border border-neutral-300 p-4">
+          <div className="text-[12px] font-semibold text-neutral-900">
+            이 숫자들이 실제로 얼마나 불확실한가
+          </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-neutral-500">
+            겹치는 구간을 감안해 블록 부트스트랩으로 95% 범위를 구했습니다.
+          </p>
+          <div className="mt-3 space-y-2 text-[12px]">
+            <div className="flex items-baseline justify-between">
+              <span className="text-neutral-600">1년 뒤 중앙값</span>
+              <span className="tabular-nums text-neutral-900">
+                {bucket.median >= 0 ? '+' : ''}
+                {bucket.median.toFixed(1)}%
+                <span className="ml-2 text-neutral-500">
+                  ({ci.medianLow.toFixed(0)}% ~ {ci.medianHigh >= 0 ? '+' : ''}
+                  {ci.medianHigh.toFixed(0)}%)
+                </span>
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between">
+              <span className="text-neutral-600">손실로 끝날 확률</span>
+              <span className="tabular-nums text-neutral-900">
+                {bucket.negativeRate.toFixed(0)}%
+                <span className="ml-2 text-neutral-500">
+                  ({ci.negLow.toFixed(0)}% ~ {ci.negHigh.toFixed(0)}%)
+                </span>
+              </span>
+            </div>
+          </div>
+          <p className="mt-3 text-[12px] leading-relaxed text-neutral-600">
+            {ci.signCertain
+              ? '이 구간은 중앙값의 부호가 확정됩니다. 다섯 구간 중 드문 경우입니다.'
+              : '괄호 안이 실제 범위입니다. 중앙값이 플러스인지 마이너스인지조차 확정되지 않습니다. 다섯 구간 중 네 곳이 그렇습니다.'}
+          </p>
+        </div>
+      ) : null}
+
       <p className="mt-4 border-l-2 border-neutral-300 pl-4 text-[12px] leading-relaxed text-neutral-500">
         다만 {bucket.n.toLocaleString('ko-KR')}일이라는 숫자를 표본 크기로 읽으면 안 됩니다. 1년짜리
         창이 서로 364일씩 겹치기 때문에, 서로 다른 시기는{' '}

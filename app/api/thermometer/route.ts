@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import historyData from '@/data/market-history.json';
 import { holdingStats, payoffSensitivity, MEDALLION_WIN_RATE, COST } from '@/lib/trading-cost';
 import {
+  bucketBootstrap,
+  averageDividendYield,
   expandingPercentileSeries,
   buildBuckets,
   computeTemperatureSeries,
@@ -20,6 +22,7 @@ export const dynamic = 'force-dynamic';
 
 const CACHE_MS = 30 * 60 * 1000;
 let cache: { at: number; data: unknown } | null = null;
+let bootstrapCache: ReturnType<typeof bucketBootstrap> | null = null;
 let inFlight: Promise<unknown> | null = null;
 
 const UA =
@@ -91,6 +94,10 @@ async function build() {
   const series = computeTemperatureSeries(rows);
   const buckets = buildBuckets(series, 20);
   const validation = temperatureReturnCorrelation(series);
+  // 부트스트랩은 과거 데이터에만 의존하므로 프로세스당 한 번만 계산한다
+  if (bootstrapCache === null) bootstrapCache = bucketBootstrap(series);
+  const bucketCI = bootstrapCache;
+  const dividend = averageDividendYield(rows);
   const honest = nonOverlappingValidation(series);
   const scorecard = walkForwardScorecard(series);
 
@@ -304,6 +311,8 @@ async function build() {
     cost,
     myBucket,
     buckets,
+    bucketCI,
+    dividend,
     validation,
     honest: { correlation: honest.correlation, n: honest.n, points: honest.points },
     scorecard,

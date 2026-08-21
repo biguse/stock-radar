@@ -22,6 +22,8 @@ export type MarketRow = {
   pbr?: number | null;
   /** 한국 국고채 장기금리 % (FRED INTGSBKRM193N) */
   kr10y?: number | null;
+  /** 코스피 배당수익률 % (KRX, 2001~). 지수가 가격지수라 빠져 있는 몫 */
+  dy?: number | null;
 };
 
 export type AxisKey = 'price' | 'fear' | 'fx' | 'rate' | 'real';
@@ -465,4 +467,109 @@ export function walkForwardScorecard(
     edgeVsBaseline: Math.round((hitRate - baselineAlwaysUp) * 10) / 10,
     meanAbsError: mae,
   };
+}
+
+
+/* ────────────────────────────────────────────────────────────────
+ * 블록 부트스트랩 — 구간 통계의 불확실성
+ *
+ * 1년 창이 364일씩 겹치므로 각 구간의 중앙값·손실확률을 점 추정으로
+ * 제시하면 실제보다 정밀해 보인다. 시간 구조를 보존하는 이동블록
+ * 부트스트랩으로 신뢰구간을 구한다.
+ * ──────────────────────────────────────────────────────────────── */
+
+function mulberry32(seed: number): () => number {
+  let a = seed;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export type BucketCI = {
+  from: number;
+  to: number;
+  medianLow: number;
+  medianHigh: number;
+  negLow: number;
+  negHigh: number;
+  /** 중앙값의 부호가 신뢰구간 안에서 확정되는가 */
+  signCertain: boolean;
+};
+
+export function bucketBootstrap(
+  series: DayTemperature[],
+  opts: { bucketSize?: number; reps?: number; block?: number; seed?: number } = {},
+): BucketCI[] {
+  const size = opts.bucketSize ?? 20;
+  const reps = opts.reps ?? 400;
+  const block = opts.block ?? FORWARD_DAYS;
+  const rand = mulberry32(opts.seed ?? 20260822);
+  const count = Math.ceil(100 / size);
+
+  const pairs: { b: number; ret: number }[] = [];
+  for (let i = 0; i + FORWARD_DAYS < series.length; i++) {
+    const b = Math.min(Math.floor(series[i].temp / size), count - 1);
+    pairs.push({ b, ret: ((series[i + FORWARD_DAYS].kospi - series[i].kospi) / series[i].kospi) * 100 });
+  }
+  const n = pairs.length;
+  if (n < block * 2) return [];
+
+  const meds: number[][] = Array.from({ length: count }, () => []);
+  const negs: number[][] = Array.from({ length: count }, () => []);
+
+  for (let r = 0; r < reps; r++) {
+    const groups: number[][] = Array.from({ length: count }, () => []);
+    let filled = 0;
+    while (filled < n) {
+      const start = Math.floor(rand() * n);
+      for (let k = 0; k < block && filled < n; k++, filled++) {
+        const p = pairs[(start + k) % n];
+        groups[p.b].push(p.ret);
+      }
+    }
+    for (let b = 0; b < count; b++) {
+      const g = groups[b];
+      if (g.length < 20) continue;
+      g.sort((x, y) => x - y);
+      meds[b].push(quantile(g, 0.5));
+      negs[b].push((g.filter((x) => x < 0).length / g.length) * 100);
+    }
+  }
+
+  const out: BucketCI[] = [];
+  for (let b = 0; b < count; b++) {
+    if (meds[b].length < 20) continue;
+    meds[b].sort((x, y) => x - y);
+    negs[b].sort((x, y) => x - y);
+    const lo = quantile(meds[b], 0.025);
+    const hi = quantile(meds[b], 0.975);
+    out.push({
+      from: b * size,
+      to: b * size + size,
+      medianLow: round1(lo),
+      medianHigh: round1(hi),
+      negLow: round1(quantile(negs[b], 0.025)),
+      negHigh: round1(quantile(negs[b], 0.975)),
+      signCertain: lo > 0 || hi < 0,
+    });
+  }
+  return out;
+}
+
+/** 코스피는 가격지수라 배당이 빠져 있다. 실제 투자 수익은 이만큼 더 높았다 */
+export function averageDividendYield(rows: MarketRow[]): { avg: number; from: string | null } {
+  const vals: number[] = [];
+  let from: string | null = null;
+  for (const r of rows) {
+    if (r.dy !== null && r.dy !== undefined && r.dy > 0) {
+      if (from === null) from = r.d;
+      vals.push(r.dy);
+    }
+  }
+  if (vals.length === 0) return { avg: 0, from: null };
+  return { avg: Math.round((vals.reduce((s, x) => s + x, 0) / vals.length) * 100) / 100, from };
 }
