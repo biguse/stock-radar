@@ -1,0 +1,45 @@
+name: daily-market-record
+
+on:
+  schedule:
+    # 매일 13:00 UTC = 22:00 KST (한국 장 마감 후, 미국 전일 데이터 확정 후)
+    - cron: '0 13 * * 1-6'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-market-record
+  cancel-in-progress: false
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Append today's market row
+        run: node scripts/record-daily.mjs
+
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- data/market-history.json; then
+            echo "변경 없음 — 커밋 생략"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/market-history.json
+          git commit -m "chore: 시장 데이터 일일 기록 $(date -u +%Y-%m-%d)"
+          git push
