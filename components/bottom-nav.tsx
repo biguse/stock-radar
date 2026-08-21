@@ -21,6 +21,9 @@ const ITEMS: NavItem[] = [
 export function BottomNav() {
   const pathname = usePathname();
 
+  // 시장 온도계는 공개용 단독 페이지 — 개인 도구 네비를 노출하지 않는다
+  if (pathname.startsWith('/thermometer')) return null;
+
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-800 bg-slate-950/95 backdrop-blur">
       <ul className="mx-auto flex max-w-2xl items-stretch">
