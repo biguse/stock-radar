@@ -12,7 +12,10 @@ type Gauge = {
   date: string;
 };
 
-type Bucket = { from: number; to: number; n: number; min: number; median: number; max: number; negativeRate: number };
+type Bucket = {
+  from: number; to: number; n: number; independentYears: number;
+  min: number; median: number; max: number; negativeRate: number;
+};
 
 type Probability = {
   lastTradingDay: string | null;
@@ -595,6 +598,12 @@ function Outcome({ bucket, trendScore }: { bucket: Bucket; trendScore: number })
       <p className="mt-3 text-[14px] leading-relaxed text-neutral-500">
         손실로 끝난 경우는 {bucket.negativeRate.toFixed(0)}%였습니다. 높이 올라와 있다는 사실이 곧
         떨어진다는 뜻은 아닙니다.
+      </p>
+      <p className="mt-4 border-l-2 border-neutral-300 pl-4 text-[12px] leading-relaxed text-neutral-500">
+        다만 {bucket.n.toLocaleString('ko-KR')}일이라는 숫자를 표본 크기로 읽으면 안 됩니다. 1년짜리
+        창이 서로 364일씩 겹치기 때문에, 실제로 서로 다른 시기는{' '}
+        <strong className="font-semibold text-neutral-700">약 {bucket.independentYears}년치</strong>에
+        불과합니다. 근거는 보기보다 얇습니다.
       </p>
     </section>
   );

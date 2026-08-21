@@ -220,7 +220,10 @@ export type Bucket = {
   from: number;
   to: number;
   label: string;
+  /** 구간에 속한 거래일 수. 1년 창이 겹치므로 이 숫자를 표본 크기로 읽으면 안 된다 */
   n: number;
+  /** 겹침을 걷어낸 실질 독립 표본 (년 단위) */
+  independentYears: number;
   min: number;
   p25: number;
   median: number;
@@ -262,6 +265,7 @@ export function buildBuckets(series: DayTemperature[], bucketSize = 20): Bucket[
       to,
       label: temperatureLabel((from + to) / 2),
       n: sorted.length,
+      independentYears: Math.round((sorted.length / FORWARD_DAYS) * 10) / 10,
       min: round1(sorted[0]),
       p25: round1(quantile(sorted, 0.25)),
       median: round1(quantile(sorted, 0.5)),
