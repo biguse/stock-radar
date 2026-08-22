@@ -16,7 +16,7 @@
     "krx": "pykrx get_index_fundamental(1001) — KOSPI PER/PBR/배당수익률"
   },
   "generatedAt": "2026-08-22",
-  "note": "체크인된 원자료의 승인된 상태. 과거 행을 고치거나 지울 때는 scripts/verify_data_integrity.py --approve 로 승인 항목을 남겨야 통과한다. 승인은 날짜뿐 아니라 changeType과 변경 전/후 행 해시까지 일치해야 유효하다 — 날짜만 보면 한 번 승인된 날짜가 앞으로 어떤 변경이든 통과시키기 때문이다. 최신 날짜 추가는 승인 없이 통과한다.",
+  "note": "체크인된 원자료의 승인된 상태. 과거 행을 고치거나 지울 때는 --approve 로 승인 항목을 남겨야 통과한다. 승인은 날짜뿐 아니라 changeType과 변경 전/후 행 해시까지 일치해야 유효하다 — 날짜만 보면 한 번 승인된 날짜가 앞으로 어떤 변경이든 통과시키기 때문이다. 최신 날짜 추가는 승인 없이 통과한다.",
   "intentionalChanges": [
     {
       "date": "2000-05-01",
@@ -39,27 +39,6 @@
       "approvedAt": "2026-08-22",
       "evidence": "data/price-lineage.json",
       "appliedIn": "d262b9a"
-    }
-  ],
-  "verifications": [
-    {
-      "scope": "2026",
-      "kind": "krx-close-full-audit",
-      "period": {
-        "from": "2026-01-01",
-        "to": "2026-08-21"
-      },
-      "commonDays": 156,
-      "mismatches": 0,
-      "onlyLocal": 0,
-      "onlyKrx": 0,
-      "krxResponseSha256": "bdc642589a6200cc18cda71c6fb4471249f687475a4d3f456c40d3ab4ce9c017",
-      "localFileSha256": "9694c3dc8ce69f645231f3889fed0dc3e7de86aaa219cf030ca27cf0322eb5e9",
-      "actionsRunId": "32514973807",
-      "actionsRunUrl": "https://github.com/biguse/stock-radar/actions/runs/32514973807",
-      "tool": "scripts/audit-krx-year.py (pykrx 1.2.8, Python 3.12)",
-      "verifiedAt": "2026-08-22",
-      "note": "2026년 일간 변동성이 다른 해 중앙값의 3.3배로 나와 수집 오류를 의심했으나, KRX 공식 시세와 156일 전부 일치했다. 7월 31일 +17.91%도 KRX 원문의 저가 5,629.76 / 고가 6,630.77로 확인된다. 수집 오류가 아니다."
     }
   ]
 }
