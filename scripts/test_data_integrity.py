@@ -259,6 +259,49 @@ def _(root):
                    "reason": "6100 짜리 행만 승인했다"})
 
 
+# ── 늦게 도착하는 값의 보충 ─────────────────────────────────────
+# KRX 밸류에이션은 당일 수집 때 아직 발표 전인 날이 있어, 다음 실행이
+# 과거 행의 빈 칸을 채운다. 이건 통과해야 한다. 그러나 이미 값이 있던
+# 자리를 바꾸거나 종가를 건드리는 것은 여전히 막아야 한다.
+
+@case("과거 행의 빈 칸이 채워지면", True)
+def _(root):
+    rows = [dict(r) for r in BASE_ROWS]
+    rows[1] = dict(rows[1]); rows[1]["kr10y"] = 3.21    # None 이었다
+    write_data(root, rows)
+
+
+@case("빈 칸 채움과 새 행 추가가 같이 와도", True)
+def _(root):
+    rows = [dict(r) for r in BASE_ROWS]
+    rows[1] = dict(rows[1]); rows[1]["kr10y"] = 3.21
+    rows.append({"d": "2026-08-07", "kospi": 6650.0, "vix": 15.4, "fx": 1394.0,
+                 "y10": 4.6, "spread": 0.5, "expYoY": 70.7, "per": 18.9,
+                 "pbr": 1.97, "kr10y": None, "dy": 0.92})
+    write_data(root, rows)
+
+
+@case("이미 값이 있던 칸이 바뀌면", False, "[미승인 변경]")
+def _(root):
+    rows = [dict(r) for r in BASE_ROWS]
+    rows[1] = dict(rows[1]); rows[1]["per"] = 99.9      # 18.6 이었다
+    write_data(root, rows)
+
+
+@case("빈 칸 채움에 종가 변경이 섞이면", False, "[미승인 변경]")
+def _(root):
+    rows = [dict(r) for r in BASE_ROWS]
+    rows[1] = dict(rows[1]); rows[1]["kr10y"] = 3.21; rows[1]["kospi"] = 1.0
+    write_data(root, rows)
+
+
+@case("값이 지워지면 (값 → 빈 칸)", False, "[미승인 변경]")
+def _(root):
+    rows = [dict(r) for r in BASE_ROWS]
+    rows[1] = dict(rows[1]); rows[1]["per"] = None
+    write_data(root, rows)
+
+
 @case("--approve 로 기록하면 통과", True)
 def _(root):
     write_data(root, [r for r in BASE_ROWS if r["d"] != "2026-08-04"])

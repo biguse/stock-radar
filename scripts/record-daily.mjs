@@ -6,8 +6,6 @@
  * 과거 어느 날의 온도든 나중에 다시 계산해도 값이 같다.
  * → 별도 예측 기록부가 필요 없고, 누구나 재현·검증할 수 있다.
  */
-import * as cheerio from 'cheerio';
-import iconv from 'iconv-lite';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 
 const UA =
@@ -15,21 +13,41 @@ const UA =
 const FILE = 'data/market-history.json';
 const VALUATION_FILE = 'data/krx-valuation.json';
 
+/**
+ * 코스피 일별 종가.
+ *
+ * 2026-08-29부터 finance.naver.com 의 옛 HTML 시세표가 410(영구 삭제)이 됐다.
+ * 네이버 금융이 stock.naver.com 으로 옮기면서 구 페이지를 내렸고,
+ * 그 사실을 모른 채 27일간 수집이 멈춰 있었다.
+ *
+ * 새 사이트가 쓰는 JSON API로 바꾼다. EUC-KR 디코딩과 HTML 파싱이
+ * 사라져 cheerio·iconv 의존도 함께 없어졌다.
+ *
+ * pageSize를 넉넉히 두는 이유: 예전에는 page=1(6일치)만 받아서 수집이
+ * 며칠만 멈춰도 그 구간이 영구히 비었다. 60일치를 받아 두면 한 달쯤
+ * 끊겨도 다음 성공 때 자동으로 메워진다.
+ */
+const KOSPI_PAGE_SIZE = 60;
+
 async function recentKospi() {
-  const res = await fetch('https://finance.naver.com/sise/sise_index_day.naver?code=KOSPI&page=1', {
-    headers: { 'User-Agent': UA },
-  });
+  const url = `https://m.stock.naver.com/api/index/KOSPI/price?pageSize=${KOSPI_PAGE_SIZE}&page=1`;
+  const res = await fetch(url, { headers: { 'User-Agent': UA } });
   if (!res.ok) throw new Error(`네이버 HTTP ${res.status}`);
-  const html = iconv.decode(Buffer.from(await res.arrayBuffer()), 'EUC-KR');
-  const $ = cheerio.load(html);
+  const rows = await res.json();
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error('네이버 응답이 비었습니다 (API 형식이 바뀌었을 수 있음)');
+  }
   const out = new Map();
-  $('tr').each((_, tr) => {
-    const $tr = $(tr);
-    const d = $tr.find('td.date').first().text().trim();
-    if (!/^\d{4}\.\d{2}\.\d{2}$/.test(d)) return;
-    const close = Number($tr.find('td.number_1').first().text().trim().replace(/,/g, ''));
-    if (Number.isFinite(close) && close > 0) out.set(d.replace(/\./g, '-'), close);
-  });
+  for (const r of rows) {
+    const d = String(r?.localTradedAt ?? '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+    const close = Number(String(r?.closePrice ?? '').replace(/,/g, ''));
+    if (Number.isFinite(close) && close > 0) out.set(d, close);
+  }
+  // 형식이 조용히 바뀌어 전부 걸러지는 경우를 빈 수집으로 넘기지 않는다.
+  if (out.size === 0) {
+    throw new Error(`네이버 응답 ${rows.length}건에서 날짜·종가를 하나도 읽지 못했습니다`);
+  }
   return out;
 }
 

@@ -46,45 +46,50 @@ async function fredLatest(id: string, sinceDays = 120): Promise<{ d: string; v: 
 }
 
 /**
- * 오늘의 원/달러 — 네이버 실시간.
+ * 오늘의 원/달러 — 네이버 실시간 (stock.naver.com JSON API).
  * FRED DEXKOUS는 미국 연준 H.10 기준이라 최대 일주일 늦게 갱신된다.
  * 역사 시계열은 FRED(1981~)를 쓰되, 오늘 값만 네이버에서 가져온다.
  * (매매기준율 vs 뉴욕 정오환율 차이는 0.1% 수준으로 백분위 산출에 영향 없음)
  */
 async function latestUsdKrwFromNaver(): Promise<{ d: string; v: number } | null> {
   try {
-    const res = await fetch('https://finance.naver.com/marketindex/', {
-      headers: { 'User-Agent': UA },
-      cache: 'no-store',
-    });
+    const res = await fetch(
+      'https://m.stock.naver.com/front-api/marketIndex/productDetail?category=exchange&reutersCode=FX_USDKRW',
+      { headers: { 'User-Agent': UA }, cache: 'no-store' },
+    );
     if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    const iconv = (await import('iconv-lite')).default;
-    const html = iconv.decode(buf, 'EUC-KR');
-    const anchor = html.indexOf('미국 USD');
-    if (anchor < 0) return null;
-    const m = html.slice(anchor).match(/<span class="value">([\d,.]+)<\/span>/);
-    if (!m) return null;
-    const v = Number(m[1].replace(/,/g, ''));
+    const json = (await res.json()) as {
+      result?: { closePrice?: string; localTradedAt?: string };
+    };
+    const v = Number(String(json?.result?.closePrice ?? '').replace(/,/g, ''));
     if (!Number.isFinite(v) || v <= 0) return null;
-    return { d: new Date().toISOString().slice(0, 10), v };
+    const traded = String(json?.result?.localTradedAt ?? '').slice(0, 10);
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(traded) ? traded : new Date().toISOString().slice(0, 10);
+    return { d, v };
   } catch {
     return null;
   }
 }
 
 async function latestKospi(): Promise<{ d: string; v: number } | null> {
-  const res = await fetch('https://finance.naver.com/sise/sise_index_day.naver?code=KOSPI&page=1', {
-    headers: { 'User-Agent': UA },
-    cache: 'no-store',
-  });
-  if (!res.ok) return null;
-  const buf = Buffer.from(await res.arrayBuffer());
-  const iconv = (await import('iconv-lite')).default;
-  const html = iconv.decode(buf, 'EUC-KR');
-  const m = html.match(/<td class="date">(\d{4})\.(\d{2})\.(\d{2})<\/td>[\s\S]*?<td class="number_1">([\d,.]+)<\/td>/);
-  if (!m) return null;
-  return { d: `${m[1]}-${m[2]}-${m[3]}`, v: Number(m[4].replace(/,/g, '')) };
+  try {
+    const res = await fetch('https://m.stock.naver.com/api/index/KOSPI/price?pageSize=10&page=1', {
+      headers: { 'User-Agent': UA },
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const rows = (await res.json()) as Array<{ localTradedAt?: string; closePrice?: string }>;
+    if (!Array.isArray(rows)) return null;
+    for (const r of rows) {
+      const d = String(r?.localTradedAt ?? '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+      const v = Number(String(r?.closePrice ?? '').replace(/,/g, ''));
+      if (Number.isFinite(v) && v > 0) return { d, v };
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 async function build() {

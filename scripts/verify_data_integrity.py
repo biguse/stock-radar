@@ -61,6 +61,28 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+# 값이 늦게 도착하는 항목들. KRX 밸류에이션(per·pbr·dy)과 FRED 계열은
+# 당일 22시 수집 때 아직 발표 전인 날이 있어, 다음 실행이 빈 칸을 채운다.
+# 이건 정상 운영이므로 승인 없이 통과시킨다. 다만 **빈 칸 → 값** 일 때만이다.
+# 이미 값이 있던 자리가 다른 값으로 바뀌는 것은 여전히 승인이 필요하다.
+# 날짜와 종가는 어떤 경우에도 이 예외를 받지 못한다.
+NEVER_ENRICHABLE = {"d", "kospi"}
+
+
+def is_enrichment(before, after, fields) -> bool:
+    """바뀐 항목이 전부 '비어 있던 칸이 채워진 것'인가."""
+    if not fields:
+        return False
+    for f in fields:
+        if f in NEVER_ENRICHABLE:
+            return False
+        if before.get(f) is not None:
+            return False
+        if after.get(f) is None:
+            return False
+    return True
+
+
 def row_hash(row) -> str:
     """행 하나의 내용 해시. 키 순서와 공백에 흔들리지 않게 정규화한다."""
     canon = json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -270,6 +292,8 @@ def check_against_baseline(base_rows, cur_rows, manifest, errors, warnings, info
         "removed": removed,
         "modified": [m["date"] for m in modified],
     }
+    info["diff"]["enrichedCount"] = sum(
+        1 for m in modified if is_enrichment(m["beforeRow"], m["afterRow"], m["fields"]))
 
     def demand(date, change_type, before, after, detail):
         entries = approved.get(date, [])
@@ -295,9 +319,21 @@ def check_against_baseline(base_rows, cur_rows, manifest, errors, warnings, info
 
     for d in removed:
         demand(d, "removed", base_map[d], None, "과거 행이 사라졌습니다.")
+    enriched = []
     for m in modified:
+        if is_enrichment(m["beforeRow"], m["afterRow"], m["fields"]):
+            enriched.append({"date": m["date"], "fields": m["fields"]})
+            continue
         demand(m["date"], "modified", m["beforeRow"], m["afterRow"],
                f"바뀐 항목: {', '.join(m['fields'])}")
+    if enriched:
+        info["enriched"] = enriched
+        fields = sorted({f for e in enriched for f in e["fields"]})
+        warnings.append(
+            f"과거 {len(enriched)}행의 빈 칸이 채워졌습니다 ({', '.join(fields)}) — "
+            f"{enriched[0]['date']}~{enriched[-1]['date']}. 늦게 도착하는 항목의 "
+            f"정상 보충으로 보아 통과시킵니다"
+        )
     for d in back_inserted:
         demand(d, "inserted", None, cur_map[d],
                f"마지막 날짜({base_last})보다 과거인데 새로 생겼습니다.")
@@ -516,7 +552,8 @@ def report(info, errors, warnings, args):
               + (f"  ({d['appended'][0]} ~ {d['appended'][-1]})" if d["appended"] else ""))
         print(f"  과거 삽입   {len(d['backInserted'])}행 {d['backInserted'] or ''}")
         print(f"  삭제        {len(d['removed'])}행 {d['removed'] or ''}")
-        print(f"  수정        {len(d['modified'])}행 {d['modified'] or ''}")
+        print(f"  수정        {len(d['modified'])}행 {d['modified'] or ''}"
+              + (f"  (그중 빈 칸 채움 {d['enrichedCount']}행)" if d.get("enrichedCount") else ""))
         for a in info.get("approvedApplied", []):
             print(f"  승인됨 · {a['date']} {a['changeType']} — {a['reason']}")
 
