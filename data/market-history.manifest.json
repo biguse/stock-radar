@@ -2,7 +2,7 @@
   "rowCount": 9475,
   "firstDate": "1990-01-04",
   "lastDate": "2026-09-23",
-  "sha256": "1927ca0326d56bf8e315d3ee76a896fe29736b3d90ca4f8fb4d3f1d643eca7ba",
+  "sha256": "708009b2ed43e2d0e90d3c5fba3988ef36549f472d325398a324d5bd0ac1e98e",
   "source": {
     "kospi": "finance.naver.com/sise/sise_index_day.naver",
     "fred": [
