@@ -1,8 +1,8 @@
 {
-  "rowCount": 9495,
+  "rowCount": 9496,
   "firstDate": "1990-01-04",
-  "lastDate": "2026-10-27",
-  "sha256": "8db1a36df03a8ea7626500e836138cf4b47a0aed8777644d0ae9804680abaa2c",
+  "lastDate": "2026-10-28",
+  "sha256": "cf45d38805a1d3951f01300d9a9d91045d7d5dd58dc60355560038c2f92264a9",
   "source": {
     "kospi": "finance.naver.com/sise/sise_index_day.naver",
     "fred": [
@@ -15,7 +15,7 @@
     ],
     "krx": "pykrx get_index_fundamental(1001) — KOSPI PER/PBR/배당수익률"
   },
-  "generatedAt": "2026-10-27",
+  "generatedAt": "2026-10-28",
   "note": "체크인된 원자료의 승인된 상태. 과거 행을 고치거나 지울 때는 --approve 로 승인 항목을 남겨야 통과한다. 승인은 날짜뿐 아니라 changeType과 변경 전/후 행 해시까지 일치해야 유효하다 — 날짜만 보면 한 번 승인된 날짜가 앞으로 어떤 변경이든 통과시키기 때문이다. 최신 날짜 추가는 승인 없이 통과한다.",
   "intentionalChanges": [
     {
